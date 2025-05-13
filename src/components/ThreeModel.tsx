@@ -2,36 +2,33 @@
 
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 const ThreeModel = () => {
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!mountRef.current) return;
-    // Three.jsのシーンを作成
+
+    const mountNode = mountRef.current; // ローカル変数にコピー
     const scene = new THREE.Scene();
-    //↓の1行消すと背景が黒になる
-    scene.background = new THREE.Color(0xffffff); 
-    // パースペクティブカメラ作成
+    scene.background = new THREE.Color(0xffffff);
+
     const camera = new THREE.PerspectiveCamera(
       60,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
-     // カメラの位置
     camera.position.set(0, 1, 5);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    mountRef.current.appendChild(renderer.domElement);
+    mountNode.appendChild(renderer.domElement);
 
-    //コントロール
     const controls = new OrbitControls(camera, renderer.domElement);
 
-    // モデル読み込み
     const loader = new GLTFLoader();
     loader.load(
       '/models/earth2.glb',
@@ -44,7 +41,6 @@ const ThreeModel = () => {
       }
     );
 
-    //アニメーションループ
     const animate = () => {
       requestAnimationFrame(animate);
       controls.update();
@@ -54,9 +50,7 @@ const ThreeModel = () => {
 
     // クリーンアップ
     return () => {
-      if (mountRef.current) {
-        mountRef.current.removeChild(renderer.domElement);
-      }
+      mountNode.removeChild(renderer.domElement);
     };
   }, []);
 
