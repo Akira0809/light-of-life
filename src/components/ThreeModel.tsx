@@ -43,8 +43,9 @@ const ThreeModel = () => {
       }
     );
     //アニメーション
+    let animationFrameId: number; // Store the requestAnimationFrame ID
     const animate = () => {
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
     };
