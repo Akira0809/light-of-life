@@ -13,7 +13,6 @@ const ThreeModel = () => {
 
     const mountNode = mountRef.current;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xffffff);
 
     // カメラを作成
     const camera = new THREE.PerspectiveCamera(
@@ -32,18 +31,21 @@ const ThreeModel = () => {
     // コントロール
     const controls = new OrbitControls(camera, renderer.domElement);
 
-    // 3Dモデルの読み込み
-    const loader = new GLTFLoader();
-    loader.load(
-      '/models/earth2.glb',
-      (gltf) => {
-        scene.add(gltf.scene);
-      },
-      undefined,
-      (error) => {
-        console.error('モデル読み込みエラー:', error);
-      }
-    );
+    // ライト追加
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 5, 5);
+    scene.add(ambientLight, directionalLight);
+
+    //画像読み込む
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('/textures/earthalbedo.jpg'); 
+
+    //地球を表現する3Dメッシュを作成、シーンに追加する処理
+    const geometry = new THREE.SphereGeometry(1, 64, 64);
+    const material = new THREE.MeshStandardMaterial({ map: texture });
+    const earth = new THREE.Mesh(geometry, material);
+    scene.add(earth);
 
     // アニメーション
     let animationFrameId: number;
