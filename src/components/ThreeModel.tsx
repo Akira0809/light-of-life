@@ -18,21 +18,21 @@ const ThreeModel = () => {
     canvas.width = 512;
     canvas.height = 512;
     const context = canvas.getContext('2d')!;
-    
+
     // 線形グラデーション作成（上から下）
     const gradient = context.createLinearGradient(0, 0, 0, 512);
-    
+
     // グラデーションの色 stop を rgba で指定
     gradient.addColorStop(0, 'rgb(0, 0, 5)');     // 上：濃い青
     gradient.addColorStop(1, 'rgb(0, 0, 0)');    // 下：紫がかった青
-    
+
     context.fillStyle = gradient;
     context.fillRect(0, 0, 512, 512);
-    
+
     // THREE.jsの背景として設定
     const gradientTexture = new THREE.CanvasTexture(canvas);
     scene.background = gradientTexture;
-    
+
     // カメラ
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 0, 2.5);
