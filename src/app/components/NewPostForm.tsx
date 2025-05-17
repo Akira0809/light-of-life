@@ -14,7 +14,6 @@ export default function NewPostForm() {
     comment: ''
   })
   const [error, setError] = useState('')
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
@@ -39,11 +38,11 @@ export default function NewPostForm() {
   }
 
   console.log('投稿内容:', postData)
+  
+  const { error:insertError } = await supabase.from('posts').insert([postData])
 
-  const { error } = await supabase.from('posts').insert([postData])
-
-  if (error) {
-    setError(error.message)
+  if (insertError) {
+    setError(insertError.message)
   } else {
     alert('投稿完了')
     setForm({ status: '', lat: '', lng: '', name: '', gender: '', age: '', comment: '' })
