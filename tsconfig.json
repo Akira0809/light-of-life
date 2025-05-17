@@ -23,6 +23,6 @@
       "@/*": ["*"],
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/components/ThreeModel.tsx"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/app/components/ThreeModel.tsx"],
   "exclude": ["node_modules"]
 }
