@@ -45,23 +45,65 @@ const PostForm = ({ lat, lon, onClose }: Props) => {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 bg-white border rounded-lg shadow-lg p-4 w-80 z-50">
+    <div className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-4 w-80 z-50 text-black dark:text-white">
       <form onSubmit={handleSubmit} className="space-y-2">
         <label className="mr-4">
-          <input type="radio" name="status" value="生まれた" checked={form.status === "生まれた"} onChange={handleChange} className="mr-1" />
+          <input
+            type="radio"
+            name="status"
+            value="生まれた"
+            checked={form.status === "生まれた"}
+            onChange={handleChange}
+            className="mr-1"
+          />
           生まれた
         </label>
         <label>
-          <input type="radio" name="status" value="死んだ" checked={form.status === "死んだ"} onChange={handleChange} className="mr-1" />
+          <input
+            type="radio"
+            name="status"
+            value="死んだ"
+            checked={form.status === "死んだ"}
+            onChange={handleChange}
+            className="mr-1"
+          />
           死んだ
         </label>
-        <input name="name" value={form.name} onChange={handleChange} placeholder="名前" className="w-full border p-2 rounded" />
-        <input name="gender" value={form.gender} onChange={handleChange} placeholder="性別" className="w-full border p-2 rounded" />
-        <input name="age" value={form.age} onChange={handleChange} placeholder="年齢" className="w-full border p-2 rounded" />
-        <textarea name="comment" value={form.comment} onChange={handleChange} placeholder="コメント" className="w-full border p-2 rounded" />
+        <input
+          name="name"
+          value={form.name}
+          onChange={handleChange}
+          placeholder="名前"
+          className="w-full border dark:border-gray-600 p-2 rounded bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+        />
+        <input
+          name="gender"
+          value={form.gender}
+          onChange={handleChange}
+          placeholder="性別"
+          className="w-full border dark:border-gray-600 p-2 rounded bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+        />
+        <input
+          name="age"
+          value={form.age}
+          onChange={handleChange}
+          placeholder="年齢"
+          className="w-full border dark:border-gray-600 p-2 rounded bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+        />
+        <textarea
+          name="comment"
+          value={form.comment}
+          onChange={handleChange}
+          placeholder="コメント"
+          className="w-full border dark:border-gray-600 p-2 rounded bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+        />
         {error && <p className="text-red-500 text-sm">{error}</p>}
-        <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded w-full">投稿</button>
-        <button type="button" onClick={onClose} className="text-sm text-gray-500 underline w-full">キャンセル</button>
+        <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded w-full">
+          投稿
+        </button>
+        <button type="button" onClick={onClose} className="text-sm text-gray-500 dark:text-gray-300 underline w-full">
+          キャンセル
+        </button>
       </form>
     </div>
   )
