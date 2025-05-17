@@ -87,6 +87,7 @@ function latLonToVector3(lat: number, lon: number, radius = 1): THREE.Vector3 {
 const ThreeModel = ({ onClickLocation }: Props) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const userPinRef = useRef<THREE.Group | null>(null);
+  const bloomMeshesRef = useRef<THREE.Mesh[]>([]); // Bloom対象のメッシュを保持
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -185,8 +186,10 @@ const ThreeModel = ({ onClickLocation }: Props) => {
 
     // ユーザーの位置にピンを追加する関数を更新
     const addUserPin = (lat: number, lon: number) => {
+      // 既存のピンとBloomメッシュをクリア
       if (userPinRef.current) {
         earthGroup.remove(userPinRef.current);
+        bloomMeshesRef.current = [];
       }
 
       const pos = latLonToVector3(lat, lon, PIN.SURFACE_OFFSET);
@@ -252,6 +255,9 @@ const ThreeModel = ({ onClickLocation }: Props) => {
 
       earthGroup.add(pinGroup);
       userPinRef.current = pinGroup;
+
+      // 発光用のメッシュをリストに追加
+      bloomMeshesRef.current.push(headGlow, stemGlow);
     };
 
     // ユーザーの現在位置を取得してピンを追加
@@ -300,7 +306,8 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
 
-      const hit = raycaster.intersectObject(earthGroup)[0];
+      // Group内のメッシュも検出するためにrecursiveをtrueに設定
+      const hit = raycaster.intersectObject(earthGroup, true)[0];
       if (!hit) return;
 
       if (!isWaitingForSecondClick) {
@@ -333,17 +340,14 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       // まず通常のシーンをレンダリング
       renderer.render(scene, camera);
 
-      // 次にBloomエフェクトを適用（発光オブジェクトのみ）
-      scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          if (obj.layers.isEnabled(LAYERS.BLOOM)) {
-            obj.layers.enable(LAYERS.BLOOM);
-          } else {
-            obj.layers.disable(LAYERS.BLOOM);
-          }
-        }
+      // 保存されたBloomメッシュのみを処理
+      bloomMeshesRef.current.forEach((mesh) => {
+        mesh.layers.enable(LAYERS.BLOOM);
       });
       composer.render();
+      bloomMeshesRef.current.forEach((mesh) => {
+        mesh.layers.disable(LAYERS.BLOOM);
+      });
     };
     animate();
 
