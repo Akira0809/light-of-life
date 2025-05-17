@@ -89,20 +89,20 @@ export const AnimatedFavicon: React.FC<AnimatedFaviconProps> = ({
         (currentIndexRef.current + 1) % loadedImagesRef.current.length;
     };
 
-    let animationInterval: NodeJS.Timeout;
+    let animationInterval: number;
 
     // アニメーションの開始
     const startAnimation = () => {
       if (loadedImagesRef.current.length === 0) return;
 
       updateFavicon(); // 初回実行
-      animationInterval = setInterval(updateFavicon, interval);
+      animationInterval = window.setInterval(updateFavicon, interval);
     };
 
     // クリーンアップ関数
     return () => {
       if (animationInterval) {
-        clearInterval(animationInterval);
+        window.clearInterval(animationInterval);
       }
       // 読み込み済み画像の参照をクリア
       loadedImagesRef.current = [];
