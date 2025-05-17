@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import ThreeModel from './ThreeModel'
 import NewPostForm from './NewPostForm'
-import { div } from 'three/tsl'
 
 const EarthWithForm = () => {
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null)
