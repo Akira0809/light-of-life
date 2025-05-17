@@ -12,8 +12,11 @@ export const AnimatedFavicon: React.FC<AnimatedFaviconProps> = ({
   interval = 500, // デフォルトは500ミリ秒
 }) => {
   const currentIndexRef = useRef(0);
+  const loadedImagesRef = useRef<HTMLImageElement[]>([]);
 
   useEffect(() => {
+    if (images.length === 0) return;
+
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -22,27 +25,46 @@ export const AnimatedFavicon: React.FC<AnimatedFaviconProps> = ({
     canvas.width = 32;
     canvas.height = 32;
 
-    // 画像要素の配列を作成
-    const imageElements = images.map(() => new Image());
-    let loadedImages = 0;
+    // 画像の読み込み状態を追跡
+    let loadedCount = 0;
+    let errorCount = 0;
+    const totalImages = images.length;
 
-    // 全ての画像が読み込まれたかチェック
-    const checkAllImagesLoaded = () => {
-      loadedImages++;
-      if (loadedImages === images.length) {
+    const checkIfReadyToStart = () => {
+      // すべての画像が読み込まれたか、エラーが発生した場合
+      if (
+        loadedCount + errorCount === totalImages &&
+        loadedImagesRef.current.length > 0
+      ) {
         startAnimation();
       }
     };
 
-    // 画像の読み込み
-    imageElements.forEach((img, index) => {
-      img.src = images[index];
-      img.onload = checkAllImagesLoaded;
+    // 画像要素の配列を作成と読み込み
+    images.forEach((src) => {
+      const img = new Image();
+
+      img.onload = () => {
+        loadedCount++;
+        loadedImagesRef.current.push(img);
+        checkIfReadyToStart();
+      };
+
+      img.onerror = () => {
+        console.warn(`Failed to load favicon frame: ${src}`);
+        errorCount++;
+        checkIfReadyToStart();
+      };
+
+      // 画像の読み込みを開始
+      img.src = src;
     });
 
     // アニメーション関数
     const updateFavicon = () => {
-      const currentImage = imageElements[currentIndexRef.current];
+      if (loadedImagesRef.current.length === 0) return;
+
+      const currentImage = loadedImagesRef.current[currentIndexRef.current];
 
       // キャンバスをクリア
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -63,13 +85,16 @@ export const AnimatedFavicon: React.FC<AnimatedFaviconProps> = ({
       link.href = canvas.toDataURL("image/png");
 
       // 次の画像インデックスを設定
-      currentIndexRef.current = (currentIndexRef.current + 1) % images.length;
+      currentIndexRef.current =
+        (currentIndexRef.current + 1) % loadedImagesRef.current.length;
     };
 
     let animationInterval: NodeJS.Timeout;
 
     // アニメーションの開始
     const startAnimation = () => {
+      if (loadedImagesRef.current.length === 0) return;
+
       updateFavicon(); // 初回実行
       animationInterval = setInterval(updateFavicon, interval);
     };
@@ -79,6 +104,8 @@ export const AnimatedFavicon: React.FC<AnimatedFaviconProps> = ({
       if (animationInterval) {
         clearInterval(animationInterval);
       }
+      // 読み込み済み画像の参照をクリア
+      loadedImagesRef.current = [];
     };
   }, [images, interval]);
 
