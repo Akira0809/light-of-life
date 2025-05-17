@@ -201,6 +201,7 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
