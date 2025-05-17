@@ -1,8 +1,46 @@
-'use client';
+"use client";
 
-import { useEffect, useRef } from 'react';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+
+// 定数定義
+const EARTH_RADIUS = 1; // 地球の半径（単位スケール）
+const CAMERA_FOV = 60; // カメラの視野角（度）
+const CAMERA_NEAR = 0.1; // カメラのニアクリップ
+const CAMERA_FAR = 1000; // カメラのファークリップ
+const CAMERA_POSITION_Z = 2.5; // カメラの初期Z位置
+
+const BACKGROUND = {
+  WIDTH: 512,
+  HEIGHT: 512,
+  TOP_COLOR: "rgb(0,0,10)", // 夜空の上部の色
+  BOTTOM_COLOR: "rgb(0,0,0)", // 夜空の下部の色
+};
+
+const LIGHTS = {
+  AMBIENT: {
+    COLOR: 0xffffff,
+    INTENSITY: 0.6,
+  },
+  DIRECTIONAL: {
+    COLOR: 0xffffff,
+    INTENSITY: 1.0,
+    POSITION: new THREE.Vector3(5, 5, 5),
+  },
+};
+
+const EARTH = {
+  SEGMENTS: 64, // 球体の分割数
+  ROTATION_SPEED: 0.001, // 自転速度
+  TEXTURE_PATH: "/textures/earthalbedo.jpg",
+};
+
+const CONTROLS = {
+  MIN_DISTANCE: 1.1,
+  MAX_DISTANCE: 10,
+  DAMPING_FACTOR: 0.1,
+};
 
 const ThreeModel = () => {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -11,107 +49,136 @@ const ThreeModel = () => {
     if (!mountRef.current) return;
     const mountNode = mountRef.current;
 
-    // シーン
+    /* ----------  Scene & Background  ---------- */
     const scene = new THREE.Scene();
 
-    // 🌌 星空グラデーション背景
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const context = canvas.getContext('2d')!;
-    const gradient = context.createLinearGradient(0, 0, 0, 512);
-    gradient.addColorStop(0, 'rgb(0, 0, 10)');  // 上：濃い青
-    gradient.addColorStop(1, 'rgb(0, 0, 0)');   // 下：黒
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 512, 512);
-    const gradientTexture = new THREE.CanvasTexture(canvas);
-    scene.background = gradientTexture;
+    const bgCanvas = document.createElement("canvas");
+    bgCanvas.width = BACKGROUND.WIDTH;
+    bgCanvas.height = BACKGROUND.HEIGHT;
+    const ctx = bgCanvas.getContext("2d")!;
+    const g = ctx.createLinearGradient(0, 0, 0, BACKGROUND.HEIGHT);
+    g.addColorStop(0, BACKGROUND.TOP_COLOR);
+    g.addColorStop(1, BACKGROUND.BOTTOM_COLOR);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, BACKGROUND.WIDTH, BACKGROUND.HEIGHT);
+    scene.background = new THREE.CanvasTexture(bgCanvas);
 
-    // カメラ
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 2.5);
+    /* ----------  Camera  ---------- */
+    const camera = new THREE.PerspectiveCamera(
+      CAMERA_FOV,
+      window.innerWidth / window.innerHeight,
+      CAMERA_NEAR,
+      CAMERA_FAR
+    );
+    camera.position.set(0, 0, CAMERA_POSITION_Z);
 
-    // ライト
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 5, 5);
-    scene.add(ambientLight, directionalLight);
+    /* ----------  Lights  ---------- */
+    scene.add(
+      new THREE.AmbientLight(LIGHTS.AMBIENT.COLOR, LIGHTS.AMBIENT.INTENSITY)
+    );
+    const dir = new THREE.DirectionalLight(
+      LIGHTS.DIRECTIONAL.COLOR,
+      LIGHTS.DIRECTIONAL.INTENSITY
+    );
+    dir.position.copy(LIGHTS.DIRECTIONAL.POSITION);
+    scene.add(dir);
 
-    // 地球テクスチャの読み込み
-    const textureLoader = new THREE.TextureLoader();
-    const earthTexture = textureLoader.load('/textures/earthalbedo.jpg');
-
-    // 地球メッシュ
-    const radius = 1;
-    const geometry = new THREE.SphereGeometry(radius, 64, 64);
-    const material = new THREE.MeshStandardMaterial({ map: earthTexture });
-    const earth = new THREE.Mesh(geometry, material);
+    /* ----------  Earth  ---------- */
+    const geom = new THREE.SphereGeometry(
+      EARTH_RADIUS,
+      EARTH.SEGMENTS,
+      EARTH.SEGMENTS
+    );
+    const tex = new THREE.TextureLoader().load(EARTH.TEXTURE_PATH);
+    const mat = new THREE.MeshStandardMaterial({ map: tex });
+    const earth = new THREE.Mesh(geom, mat);
     scene.add(earth);
 
-    // レンダラー
+    /* --- 初期回転 --- */
+    const BASE = -Math.PI / 2;
+    earth.rotation.y = BASE;
+
+    /* --- ② UTC による自転角を加算 --- */
+    const setInitialRotation = () => {
+      const now = new Date();
+      const s =
+        now.getUTCHours() * 3600 +
+        now.getUTCMinutes() * 60 +
+        now.getUTCSeconds();
+      const daily = (s / 86400) * Math.PI * 2; // 1日で360°
+      earth.rotation.y = BASE + daily;
+    };
+    setInitialRotation();
+
+    /* ----------  Renderer  ---------- */
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     mountNode.appendChild(renderer.domElement);
 
-    // OrbitControls
+    /* ----------  Controls  ---------- */
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
     controls.enableDamping = true;
-    controls.dampingFactor = 0.1;
-    controls.minDistance = 1.1;
-    controls.maxDistance = 10;
+    controls.dampingFactor = CONTROLS.DAMPING_FACTOR;
+    controls.minDistance = CONTROLS.MIN_DISTANCE;
+    controls.maxDistance = CONTROLS.MAX_DISTANCE;
 
-    // クリックで緯度経度取得
-    const raycaster = new THREE.Raycaster();
+    /* ----------  Click → lat/lon  ---------- */
+    const ray = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    const onClick = (event: MouseEvent) => {
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObject(earth);
-
-      if (intersects.length > 0) {
-        const point = intersects[0].point;
-
-        const lat = THREE.MathUtils.radToDeg(Math.asin(point.y / radius));
-        const lon = THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x));
-
-        console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
-      }
+    const toLatLon = (w: THREE.Vector3) => {
+      const p = w.clone();
+      earth.worldToLocal(p);
+      const r = p.length();
+      const lat = THREE.MathUtils.radToDeg(Math.asin(p.y / r));
+      let lon = -THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x));
+      if (lon > 180) lon -= 360;
+      if (lon < -180) lon += 360;
+      return { lat, lon };
     };
-    window.addEventListener('click', onClick);
 
-    // アニメーション
-    let animationId: number;
+    const onClick = (e: MouseEvent) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      ray.setFromCamera(mouse, camera);
+      const hit = ray.intersectObject(earth)[0];
+      if (!hit) return;
+      const { lat, lon } = toLatLon(hit.point);
+      console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+    };
+    window.addEventListener("click", onClick);
+
+    /* ----------  Animate  ---------- */
+    let id = 0;
     const animate = () => {
-      animationId = requestAnimationFrame(animate);
-      earth.rotation.y += 0.001;
+      id = requestAnimationFrame(animate);
+      earth.rotation.y += EARTH.ROTATION_SPEED;
       controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
-    // リサイズ対応
-    const handleResize = () => {
+    /* ----------  Resize / Cleanup  ---------- */
+    const onResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", onResize);
 
-    // クリーンアップ
     return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('click', onClick);
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("click", onClick);
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
   }, []);
 
-  return <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />;
+  return (
+    <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />
+  );
 };
 
 export default ThreeModel;
