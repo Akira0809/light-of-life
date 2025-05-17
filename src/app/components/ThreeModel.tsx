@@ -98,7 +98,6 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       }else{
         onClickLocation(lat, lon);
       }
-
       console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
     }
   };
