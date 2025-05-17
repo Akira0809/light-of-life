@@ -1,0 +1,28 @@
+'use client'
+
+import { useState } from 'react'
+import ThreeModel from './ThreeModel'
+import NewPostForm from './NewPostForm'
+
+const EarthWithForm = () => {
+  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null)
+
+  const handleLocation = (lat: number, lon: number) => {
+    setLocation({ lat, lon })
+  }
+
+  return (
+    <>
+      <ThreeModel onClickLocation={handleLocation} />
+      {location && (
+        <NewPostForm
+          lat={location.lat}
+          lon={location.lon}
+          onClose={() => setLocation(null)}
+        />
+      )}
+    </>
+  )
+}
+
+export default EarthWithForm

@@ -4,7 +4,11 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-const ThreeModel = () => {
+type Props = {
+  onClickLocation: (lat: number, lon: number) => void;
+};
+
+const ThreeModel = ({ onClickLocation }: Props) => {
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,9 +83,12 @@ const ThreeModel = () => {
         const lon = THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x));
 
         console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+
+        onClickLocation(lat, lon);
       }
     };
     window.addEventListener('click', onClick);
+
 
     // アニメーション
     let animationId: number;
@@ -110,6 +117,8 @@ const ThreeModel = () => {
       controls.dispose();
     };
   }, []);
+
+
 
   return <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />;
 };
