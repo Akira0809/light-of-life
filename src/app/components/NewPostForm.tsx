@@ -61,6 +61,7 @@ export default function NewPostForm() {
         <input name="gender" value={form.gender} onChange={handleChange} placeholder="性別" className="w-full border p-2 rounded" />
         <input name="age" value={form.age} onChange={handleChange} placeholder="年齢" className="w-full border p-2 rounded" />
         <textarea name="comment" value={form.comment} onChange={handleChange} placeholder="コメント" className="w-full border p-2 rounded" />
+        {error && <p className="text-red-500 text-sm">{error}</p>}
         <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded w-full">投稿</button>
       </form>
     </div>
