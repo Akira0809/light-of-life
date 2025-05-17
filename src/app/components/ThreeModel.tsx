@@ -14,25 +14,19 @@ const ThreeModel = () => {
     // シーン
     const scene = new THREE.Scene();
 
+    // 🌌 星空グラデーション背景
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
     const context = canvas.getContext('2d')!;
-    
-    // 線形グラデーション作成（上から下）
     const gradient = context.createLinearGradient(0, 0, 0, 512);
-    
-    // グラデーションの色 stop を rgba で指定
-    gradient.addColorStop(0, 'rgb(0, 0, 5)');     // 上：濃い青
-    gradient.addColorStop(1, 'rgb(0, 0, 0)');    // 下：紫がかった青
-    
+    gradient.addColorStop(0, 'rgb(0, 0, 10)');  // 上：濃い青
+    gradient.addColorStop(1, 'rgb(0, 0, 0)');   // 下：黒
     context.fillStyle = gradient;
     context.fillRect(0, 0, 512, 512);
-    
-    // THREE.jsの背景として設定
     const gradientTexture = new THREE.CanvasTexture(canvas);
     scene.background = gradientTexture;
-    
+
     // カメラ
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 0, 2.5);
@@ -43,12 +37,13 @@ const ThreeModel = () => {
     directionalLight.position.set(5, 5, 5);
     scene.add(ambientLight, directionalLight);
 
-    // 地球テクスチャ
+    // 地球テクスチャの読み込み
     const textureLoader = new THREE.TextureLoader();
     const earthTexture = textureLoader.load('/textures/earthalbedo.jpg');
 
     // 地球メッシュ
-    const geometry = new THREE.SphereGeometry(1, 64, 64);
+    const radius = 1;
+    const geometry = new THREE.SphereGeometry(radius, 64, 64);
     const material = new THREE.MeshStandardMaterial({ map: earthTexture });
     const earth = new THREE.Mesh(geometry, material);
     scene.add(earth);
@@ -58,24 +53,47 @@ const ThreeModel = () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     mountNode.appendChild(renderer.domElement);
 
-    // OrbitControlsの設定
+    // OrbitControls
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enablePan = false; // ← パンを禁止
-    controls.enableDamping = true; // スムーズな回転
+    controls.enablePan = false;
+    controls.enableDamping = true;
     controls.dampingFactor = 0.1;
-    controls.minDistance     = 1.1;   // 地球を貫通させない
-    controls.maxDistance     = 10;    // ズームアウト限界
+    controls.minDistance = 1.1;
+    controls.maxDistance = 10;
 
-    // アニメーションループ
+    // クリックで緯度経度取得
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onClick = (event: MouseEvent) => {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObject(earth);
+
+      if (intersects.length > 0) {
+        const point = intersects[0].point;
+
+        const lat = THREE.MathUtils.radToDeg(Math.asin(point.y / radius));
+        const lon = THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x));
+
+        console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+      }
+    };
+    window.addEventListener('click', onClick);
+
+    // アニメーション
     let animationId: number;
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-      controls.update(); // damping を有効にするには毎フレーム更新が必要
+      earth.rotation.y += 0.001;
+      controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
-    // ウィンドウサイズ変更対応
+    // リサイズ対応
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
@@ -87,6 +105,7 @@ const ThreeModel = () => {
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('click', onClick);
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
