@@ -307,6 +307,28 @@ export default function ThreeModel({ onClickLocation }: Props) {
     );
     camera.position.set(0, 0, CAMERA_POSITION_Z);
 
+    /* ----------  Renderer  ---------- */
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    mountNode.appendChild(renderer.domElement);
+
+    /* ----------  Bloom Effect Setup  ---------- */
+    const renderScene = new RenderPass(scene, camera);
+
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      BLOOM.STRENGTH,
+      BLOOM.RADIUS,
+      BLOOM.THRESHOLD
+    );
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(renderScene);
+    composer.addPass(bloomPass);
+
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     rendererRef.current = renderer;
     renderer.setSize(el.clientWidth, el.clientHeight);
