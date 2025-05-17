@@ -14,6 +14,7 @@ const EarthWithForm = () => {
   return (
     <>
       <ThreeModel onClickLocation={handleLocation} />
+      <div className="absolute z-50">
       {location && (
         <NewPostForm
           lat={location.lat}
@@ -21,6 +22,7 @@ const EarthWithForm = () => {
           onClose={() => setLocation(null)}
         />
       )}
+      </div>
     </>
   )
 }
