@@ -69,6 +69,10 @@ const ThreeModel = ({ onClickLocation }: Props) => {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
+    // 🌍 自転制御用フラグとタイマー
+    let isRotating = true;
+    let resumeTimeout: number | null = null;
+
     const onClick = (event: MouseEvent) => {
       mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -85,16 +89,24 @@ const ThreeModel = ({ onClickLocation }: Props) => {
         console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
 
         onClickLocation(lat, lon);
+
+        // 🌍 自転を一時停止して3秒後に再開
+        isRotating = false;
+        if (resumeTimeout) clearTimeout(resumeTimeout);
+        resumeTimeout = window.setTimeout(() => {
+          isRotating = true;
+        }, 3000);
       }
     };
     window.addEventListener('click', onClick);
-
 
     // アニメーション
     let animationId: number;
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-      earth.rotation.y += 0.001;
+      if (isRotating) {
+        earth.rotation.y += 0.001;
+      }
       controls.update();
       renderer.render(scene, camera);
     };
@@ -113,12 +125,11 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('click', onClick);
+      if (resumeTimeout) clearTimeout(resumeTimeout);
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
   }, []);
-
-
 
   return <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />;
 };
