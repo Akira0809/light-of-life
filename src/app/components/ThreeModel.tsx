@@ -72,6 +72,7 @@ const ThreeModel = ({ onClickLocation }: Props) => {
     // 🌍 自転制御用フラグとタイマー
     let isRotating = true;
     let resumeTimeout: number | null = null;
+    let isWaitingForSecondClick = false;
 
     const onClick = (event: MouseEvent) => {
       mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -82,22 +83,24 @@ const ThreeModel = ({ onClickLocation }: Props) => {
 
       if (intersects.length > 0) {
         const point = intersects[0].point;
-
         const lat = THREE.MathUtils.radToDeg(Math.asin(point.y / radius));
         const lon = THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x));
 
-        console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
-
-        onClickLocation(lat, lon);
-
-        // 🌍 自転を一時停止して3秒後に再開
+      if (!isWaitingForSecondClick) {  
         isRotating = false;
+        isWaitingForSecondClick = true;
+
         if (resumeTimeout) clearTimeout(resumeTimeout);
         resumeTimeout = window.setTimeout(() => {
           isRotating = true;
+          isWaitingForSecondClick = false;
         }, 3000);
+      }else{
+        onClickLocation(lat, lon);
       }
-    };
+      console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+    }
+  };
     window.addEventListener('click', onClick);
 
     // アニメーション
