@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { motion, AnimatePresence } from 'framer-motion'
+import { getUserId } from '@/lib/userId'
 
 type Props = {
   lat: number
@@ -26,18 +27,22 @@ const PostForm = ({ lat, lon, onClose }: Props) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const age = form.age ? parseInt(form.age) : null
 
-    const { error: insertError } = await supabase.from('posts').insert([
+    const user_id = getUserId()
+
+    const postData = [
       {
         ...form,
-        age,
+        age: form.age ? parseInt(form.age) : null,
         latitude: lat,
-        longitude: lon
+        longitude: lon,
+        user_id,
       }
-    ])
+    ]
 
-    if (insertError) {
+    const { error } = await supabase.from('posts').insert([postData])
+
+    if (error) {
       setError('投稿失敗')
     } else {
       alert('投稿完了')
