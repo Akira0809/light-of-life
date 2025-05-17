@@ -50,7 +50,7 @@ const PIN = {
 };
 
 const BLOOM = {
-  STRENGTH: 1.2, // 発光の強さを増加
+  STRENGTH: 0.25, // 発光の強さを増加
   RADIUS: 0.4, // 発光の広がりを少し増加
   THRESHOLD: 0.3, // 閾値を下げて発光しやすく
 };
@@ -216,7 +216,7 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       const normalMaterial = new THREE.MeshStandardMaterial({
         color: PIN.COLOR,
         emissive: PIN.COLOR,
-        emissiveIntensity: 0.4,
+        emissiveIntensity: 3.0,
         transparent: true,
         opacity: 0.9,
       });
