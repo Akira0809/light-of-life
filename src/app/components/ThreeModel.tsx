@@ -56,10 +56,10 @@ const ThreeModel = () => {
     bgCanvas.width = BACKGROUND.WIDTH;
     bgCanvas.height = BACKGROUND.HEIGHT;
     const ctx = bgCanvas.getContext("2d")!;
-    const g = ctx.createLinearGradient(0, 0, 0, BACKGROUND.HEIGHT);
-    g.addColorStop(0, BACKGROUND.TOP_COLOR);
-    g.addColorStop(1, BACKGROUND.BOTTOM_COLOR);
-    ctx.fillStyle = g;
+    const gradient = ctx.createLinearGradient(0, 0, 0, BACKGROUND.HEIGHT);
+    gradient.addColorStop(0, BACKGROUND.TOP_COLOR);
+    gradient.addColorStop(1, BACKGROUND.BOTTOM_COLOR);
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, BACKGROUND.WIDTH, BACKGROUND.HEIGHT);
     scene.background = new THREE.CanvasTexture(bgCanvas);
 
@@ -84,14 +84,14 @@ const ThreeModel = () => {
     scene.add(dir);
 
     /* ----------  Earth  ---------- */
-    const geom = new THREE.SphereGeometry(
+    const earthGeometry = new THREE.SphereGeometry(
       EARTH_RADIUS,
       EARTH.SEGMENTS,
       EARTH.SEGMENTS
     );
-    const tex = new THREE.TextureLoader().load(EARTH.TEXTURE_PATH);
-    const mat = new THREE.MeshStandardMaterial({ map: tex });
-    const earth = new THREE.Mesh(geom, mat);
+    const earthTexture = new THREE.TextureLoader().load(EARTH.TEXTURE_PATH);
+    const mat = new THREE.MeshStandardMaterial({ map: earthTexture });
+    const earth = new THREE.Mesh(earthGeometry, mat);
     scene.add(earth);
 
     /* --- 初期回転 --- */
@@ -112,6 +112,7 @@ const ThreeModel = () => {
 
     /* ----------  Renderer  ---------- */
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     mountNode.appendChild(renderer.domElement);
 
@@ -124,7 +125,7 @@ const ThreeModel = () => {
     controls.maxDistance = CONTROLS.MAX_DISTANCE;
 
     /* ----------  Click → lat/lon  ---------- */
-    const ray = new THREE.Raycaster();
+    const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const toLatLon = (w: THREE.Vector3) => {
@@ -141,8 +142,8 @@ const ThreeModel = () => {
     const onClick = (e: MouseEvent) => {
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-      ray.setFromCamera(mouse, camera);
-      const hit = ray.intersectObject(earth)[0];
+      raycaster.setFromCamera(mouse, camera);
+      const hit = raycaster.intersectObject(earth)[0];
       if (!hit) return;
       const { lat, lon } = toLatLon(hit.point);
       console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
@@ -150,9 +151,9 @@ const ThreeModel = () => {
     window.addEventListener("click", onClick);
 
     /* ----------  Animate  ---------- */
-    let id = 0;
+    let animationId = 0;
     const animate = () => {
-      id = requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(animate);
       earth.rotation.y += EARTH.ROTATION_SPEED;
       controls.update();
       renderer.render(scene, camera);
@@ -168,7 +169,7 @@ const ThreeModel = () => {
     window.addEventListener("resize", onResize);
 
     return () => {
-      cancelAnimationFrame(id);
+      cancelAnimationFrame(animationId);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("click", onClick);
       mountNode.removeChild(renderer.domElement);
