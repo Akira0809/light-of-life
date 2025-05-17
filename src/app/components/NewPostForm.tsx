@@ -45,7 +45,7 @@ const PostForm = ({ lat, lon, onClose }: Props) => {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-4 w-80 z-50 text-black dark:text-white">
+    <div className="fixed bottom-6 right-6 bg-white bg-opacity-95 border rounded-2xl shadow-2xl p-6 w-96 z-50">
       <form onSubmit={handleSubmit} className="space-y-2">
         <label className="mr-4">
           <input

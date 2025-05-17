@@ -132,6 +132,10 @@ const ThreeModel = ({ onClickLocation }: Props) => {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
+    let isRotating = true;
+    let resumeTimeout: number | null = null;
+    let isWaitingForSecondClick = false;
+
     const toLatLon = (w: THREE.Vector3) => {
       const p = w.clone();
       earth.worldToLocal(p);
@@ -147,11 +151,24 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
+
       const hit = raycaster.intersectObject(earth)[0];
       if (!hit) return;
+
+      if (!isWaitingForSecondClick) { 
+      isRotating = false;
+      isWaitingForSecondClick = true;
+
+      if (resumeTimeout) clearTimeout(resumeTimeout);
+       resumeTimeout = window.setTimeout(() => {
+         isRotating = true;
+         isWaitingForSecondClick = false;
+       }, 3000);
+      }else{
       const { lat, lon } = toLatLon(hit.point);
-      console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
       onClickLocation(lat, lon);
+      console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+      }
     };
     window.addEventListener("click", onClick);
 
@@ -159,7 +176,10 @@ const ThreeModel = ({ onClickLocation }: Props) => {
     let animationId = 0;
     const animate = () => {
       animationId = requestAnimationFrame(animate);
+      if (isRotating) {
       earth.rotation.y += EARTH.ROTATION_SPEED;
+      }
+
       controls.update();
       renderer.render(scene, camera);
     };
@@ -177,13 +197,14 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("click", onClick);
+      if (resumeTimeout) clearTimeout(resumeTimeout);
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
-  }, [onClickLocation]);
+  }, []);
 
   return (
-    <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />
+    <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0"  />
   );
 };
 
