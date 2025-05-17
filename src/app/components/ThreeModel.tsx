@@ -107,8 +107,10 @@ const ThreeModel = ({ onClickLocation, onLineReady }: Props) => {
       if (lineRef.current) {
         earth.remove(lineRef.current);
         lineRef.current.geometry.dispose();
+        if (lineRef.current.material instanceof THREE.Material) {
         (lineRef.current.material as THREE.Material).dispose();
         lineRef.current = null;
+        }
       }
     };
 
