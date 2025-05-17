@@ -69,6 +69,11 @@ const ThreeModel = ({ onClickLocation }: Props) => {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
+    // 🌍 自転制御用フラグとタイマー
+    let isRotating = true;
+    let resumeTimeout: number | null = null;
+    let isWaitingForSecondClick = false;
+
     const onClick = (event: MouseEvent) => {
       mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -78,23 +83,34 @@ const ThreeModel = ({ onClickLocation }: Props) => {
 
       if (intersects.length > 0) {
         const point = intersects[0].point;
-
         const lat = THREE.MathUtils.radToDeg(Math.asin(point.y / radius));
         const lon = THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x));
 
-        console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+      if (!isWaitingForSecondClick) {  
+        isRotating = false;
+        isWaitingForSecondClick = true;
 
+        if (resumeTimeout) clearTimeout(resumeTimeout);
+        resumeTimeout = window.setTimeout(() => {
+          isRotating = true;
+          isWaitingForSecondClick = false;
+        }, 3000);
+      }else{
         onClickLocation(lat, lon);
       }
-    };
-    window.addEventListener('click', onClick);
 
+      console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+    }
+  };
+    window.addEventListener('click', onClick);
 
     // アニメーション
     let animationId: number;
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-      earth.rotation.y += 0.001;
+      if (isRotating) {
+        earth.rotation.y += 0.001;
+      }
       controls.update();
       renderer.render(scene, camera);
     };
@@ -113,12 +129,11 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('click', onClick);
+      if (resumeTimeout) clearTimeout(resumeTimeout);
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
   }, []);
-
-
 
   return <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />;
 };
