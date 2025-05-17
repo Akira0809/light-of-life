@@ -50,7 +50,7 @@ const PIN = {
 };
 
 const BLOOM = {
-  STRENGTH: 0.25, // 発光の強さを増加
+  STRENGTH: 0.25, // 発光の強さ調整
   RADIUS: 0.4, // 発光の広がりを少し増加
   THRESHOLD: 0.3, // 閾値を下げて発光しやすく
 };
