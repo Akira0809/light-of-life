@@ -1,190 +1,466 @@
+// components/ThreeModel.tsx
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import PlayButton from "./PlayButton";
+import { supabase } from "@/lib/supabase";
+import { latLonToVector3 } from "@/lib/geo";
 
-// 定数定義
-const EARTH_RADIUS = 1; // 地球の半径（単位スケール）
-const CAMERA_FOV = 60; // カメラの視野角（度）
-const CAMERA_NEAR = 0.1; // カメラのニアクリップ
-const CAMERA_FAR = 1000; // カメラのファークリップ
-const CAMERA_POSITION_Z = 2.5; // カメラの初期Z位置
-
-const BACKGROUND = {
-  WIDTH: 512,
-  HEIGHT: 512,
-  TOP_COLOR: "rgb(0,0,10)", // 夜空の上部の色
-  BOTTOM_COLOR: "rgb(0,0,0)", // 夜空の下部の色
-};
-
-const LIGHTS = {
-  AMBIENT: {
-    COLOR: 0xffffff,
-    INTENSITY: 0.6,
-  },
-  DIRECTIONAL: {
-    COLOR: 0xffffff,
-    INTENSITY: 1.0,
-    POSITION: new THREE.Vector3(5, 5, 5),
-  },
-};
+/* ────────────────  CONSTS  ──────────────── */
+const EARTH_RADIUS = 1;
+const CAMERA_FOV = 60;
+const CAMERA_POSITION_Z = 2.5;
 
 const EARTH = {
-  SEGMENTS: 64, // 球体の分割数
-  ROTATION_SPEED: 0.001, // 自転速度
-  TEXTURE_PATH: "/textures/earthalbedo.jpg",
+  SEGMENTS: 64,
+  ROT_SPEED: 0.001,
+  TEX_PATH: "/textures/earthalbedo.jpg",
 };
 
-const CONTROLS = {
-  MIN_DISTANCE: 1.1,
-  MAX_DISTANCE: 10,
-  DAMPING_FACTOR: 0.1,
+const VIS = {
+  BIRTH_COLOR: new THREE.Color(0x00c0ff), // シアン
+  DEATH_COLOR: new THREE.Color(0xff3030), // 赤
+  CYLINDER_RADIUS: 0.007,
+  CYLINDER_MAX_HEIGHT: 0.25,
+  CYLINDER_HORIZONTAL_GAP: 0.005, // 水平方向の円柱間の全隙間
 };
 
-type Props = {
-  onClickLocation: (lat: number, lon: number) => void;
+/* ────────────────  TYPES  ──────────────── */
+type VitalStatsFromSupabase = {
+  iso3: string;
+  births: number;
+  deaths: number;
+  countries: { lat: number; lon: number } | null;
 };
 
-const ThreeModel = ({ onClickLocation }: Props) => {
+type VitalStatsProcessed = {
+  iso3: string;
+  births: number;
+  deaths: number;
+  lat: number;
+  lon: number;
+};
+
+type CountryMeshes = {
+  birth?: THREE.Mesh;
+  death?: THREE.Mesh;
+};
+
+type Props = { onClickLocation: (lat: number, lon: number) => void };
+
+/* ────────────────  HELPERS  ──────────────── */
+
+async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
+  console.log("fetchMatrices called with year:", year);
+  const { data, error } = await supabase
+    .from("vital_stats")
+    .select(
+      `
+      iso3, births, deaths,
+      countries:iso3(lat,lon)
+    `
+    )
+    .eq("year", year)
+    .returns<VitalStatsFromSupabase[]>();
+
+  if (error) throw error;
+  if (!data?.length) return [];
+
+  const processedData = data
+    .filter(
+      (
+        r
+      ): r is VitalStatsFromSupabase & {
+        countries: { lat: number; lon: number };
+      } => r.countries !== null
+    )
+    .map((r) => ({
+      iso3: r.iso3,
+      births: r.births,
+      deaths: r.deaths,
+      lat: r.countries.lat,
+      lon: r.countries.lon,
+    }));
+  return processedData;
+}
+
+/* ─────────────────────────────────────────── */
+
+export default function ThreeModel({ onClickLocation }: Props) {
+  console.log("ThreeModel component rendering");
   const mountRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const earthRef = useRef<THREE.Mesh | null>(null);
+  const visualizationGroupRef = useRef<THREE.Group | null>(null);
+  const countryMeshesRef = useRef(new Map<string, CountryMeshes>());
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const animationFrameIdRef = useRef<number | null>(null);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [year, setYear] = useState(1950);
+
+  const markerRef = useRef<THREE.Mesh | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const removeCylinder = (mesh: THREE.Mesh | undefined) => {
+    if (mesh) {
+      mesh.geometry.dispose();
+      if (mesh.material instanceof THREE.Material) {
+        mesh.material.dispose();
+      }
+      visualizationGroupRef.current?.remove(mesh);
+    }
+  };
+
+  const createOrUpdateCylinder = (
+    existingMesh: THREE.Mesh | undefined,
+    height: number,
+    color: THREE.Color,
+    position: THREE.Vector3,
+    quaternion: THREE.Quaternion
+  ): THREE.Mesh => {
+    if (existingMesh) {
+      let geometryNeedsUpdate = true;
+      if (existingMesh.geometry instanceof THREE.CylinderGeometry) {
+        if (
+          Math.abs(existingMesh.geometry.parameters.height - height) < 0.0001
+        ) {
+          geometryNeedsUpdate = false;
+        }
+      }
+      if (geometryNeedsUpdate) {
+        existingMesh.geometry.dispose();
+        existingMesh.geometry = new THREE.CylinderGeometry(
+          VIS.CYLINDER_RADIUS,
+          VIS.CYLINDER_RADIUS,
+          height,
+          16
+        );
+      }
+      existingMesh.position.copy(position);
+      existingMesh.quaternion.copy(quaternion);
+      if (existingMesh.material instanceof THREE.MeshBasicMaterial) {
+        existingMesh.material.color.set(color);
+      }
+      existingMesh.visible = true;
+      return existingMesh;
+    } else {
+      const geometry = new THREE.CylinderGeometry(
+        VIS.CYLINDER_RADIUS,
+        VIS.CYLINDER_RADIUS,
+        height,
+        16
+      );
+      const material = new THREE.MeshBasicMaterial({ color });
+      const newMesh = new THREE.Mesh(geometry, material);
+      newMesh.position.copy(position);
+      newMesh.quaternion.copy(quaternion);
+      visualizationGroupRef.current?.add(newMesh);
+      return newMesh;
+    }
+  };
+
+  /* ────────────────  DATA UPDATE  ──────────────── */
+  const updateVis = async (y: number) => {
+    console.log("updateVis called with year:", y);
+    if (
+      !visualizationGroupRef.current ||
+      !countryMeshesRef.current ||
+      !earthRef.current
+    ) {
+      console.warn("Refs not yet initialized in updateVis");
+      return;
+    }
+
+    const currentMeshesMap = countryMeshesRef.current;
+    const vitalData = await fetchMatrices(y);
+    const processedIso3s = new Set<string>();
+
+    if (vitalData.length === 0 && currentMeshesMap.size === 0) {
+      return;
+    }
+
+    const maxBirths = Math.max(...vitalData.map((d) => d.births), 1);
+    const maxDeaths = Math.max(...vitalData.map((d) => d.deaths), 1);
+
+    vitalData.forEach((data) => {
+      processedIso3s.add(data.iso3);
+      const countryPosition = latLonToVector3(data.lat, data.lon, EARTH_RADIUS);
+      const normal = countryPosition.clone().normalize();
+      // eslint-disable-next-line prefer-const
+      let tangent = new THREE.Vector3().crossVectors(
+        normal,
+        new THREE.Vector3(0, 1, 0)
+      );
+      if (tangent.lengthSq() < 0.0001) {
+        tangent = new THREE.Vector3().crossVectors(
+          normal,
+          new THREE.Vector3(1, 0, 0)
+        );
+      }
+      tangent.normalize();
+      const offsetAmount =
+        VIS.CYLINDER_RADIUS + VIS.CYLINDER_HORIZONTAL_GAP / 2;
+      const baseQuaternion = new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        normal
+      );
+
+      const countryEntry = currentMeshesMap.get(data.iso3) || {};
+
+      // Death cylinder
+      if (data.deaths > 0) {
+        const deathHeight = (data.deaths / maxDeaths) * VIS.CYLINDER_MAX_HEIGHT;
+        const deathPosition = countryPosition
+          .clone()
+          .addScaledVector(tangent, -offsetAmount)
+          .addScaledVector(normal, deathHeight / 2);
+        countryEntry.death = createOrUpdateCylinder(
+          countryEntry.death,
+          deathHeight,
+          VIS.DEATH_COLOR,
+          deathPosition,
+          baseQuaternion
+        );
+      } else if (countryEntry.death) {
+        removeCylinder(countryEntry.death);
+        countryEntry.death = undefined;
+      }
+
+      // Birth cylinder
+      if (data.births > 0) {
+        const birthHeight = (data.births / maxBirths) * VIS.CYLINDER_MAX_HEIGHT;
+        const birthPosition = countryPosition
+          .clone()
+          .addScaledVector(tangent, offsetAmount)
+          .addScaledVector(normal, birthHeight / 2);
+        countryEntry.birth = createOrUpdateCylinder(
+          countryEntry.birth,
+          birthHeight,
+          VIS.BIRTH_COLOR,
+          birthPosition,
+          baseQuaternion
+        );
+      } else if (countryEntry.birth) {
+        removeCylinder(countryEntry.birth);
+        countryEntry.birth = undefined;
+      }
+
+      if (countryEntry.birth || countryEntry.death) {
+        currentMeshesMap.set(data.iso3, countryEntry);
+      } else {
+        currentMeshesMap.delete(data.iso3);
+      }
+    });
+
+    const currentIso3s = Array.from(currentMeshesMap.keys());
+    for (const iso3 of currentIso3s) {
+      if (!processedIso3s.has(iso3)) {
+        const meshesToDelete = currentMeshesMap.get(iso3);
+        if (meshesToDelete) {
+          removeCylinder(meshesToDelete.birth);
+          removeCylinder(meshesToDelete.death);
+        }
+        currentMeshesMap.delete(iso3);
+      }
+    }
+  };
+
+  /* ────────────────  PLAY/PAUSE  ──────────────── */
+  const togglePlay = () => {
+    setIsPlaying((p) => !p);
+  };
 
   useEffect(() => {
-    if (!mountRef.current) return;
-    const mountNode = mountRef.current;
+    if (isPlaying) {
+      timerRef.current = setInterval(() => {
+        setYear((y) => (y >= 2024 ? 1950 : y + 1));
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isPlaying]);
 
-    /* ----------  Scene & Background  ---------- */
+  /* ────────────────  INITIAL THREE  ──────────────── */
+  useEffect(() => {
+    console.log("Initial useEffect (mount) running");
+    if (!mountRef.current) {
+      console.log("mountRef.current is null in initial useEffect");
+      return;
+    }
+    const el = mountRef.current;
+
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
 
-    const bgCanvas = document.createElement("canvas");
-    bgCanvas.width = BACKGROUND.WIDTH;
-    bgCanvas.height = BACKGROUND.HEIGHT;
-    const ctx = bgCanvas.getContext("2d")!;
-    const gradient = ctx.createLinearGradient(0, 0, 0, BACKGROUND.HEIGHT);
-    gradient.addColorStop(0, BACKGROUND.TOP_COLOR);
-    gradient.addColorStop(1, BACKGROUND.BOTTOM_COLOR);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, BACKGROUND.WIDTH, BACKGROUND.HEIGHT);
-    scene.background = new THREE.CanvasTexture(bgCanvas);
-
-    /* ----------  Camera  ---------- */
     const camera = new THREE.PerspectiveCamera(
       CAMERA_FOV,
-      window.innerWidth / window.innerHeight,
-      CAMERA_NEAR,
-      CAMERA_FAR
+      el.clientWidth / el.clientHeight,
+      0.1,
+      1000
     );
     camera.position.set(0, 0, CAMERA_POSITION_Z);
 
-    /* ----------  Lights  ---------- */
-    scene.add(
-      new THREE.AmbientLight(LIGHTS.AMBIENT.COLOR, LIGHTS.AMBIENT.INTENSITY)
-    );
-    const dir = new THREE.DirectionalLight(
-      LIGHTS.DIRECTIONAL.COLOR,
-      LIGHTS.DIRECTIONAL.INTENSITY
-    );
-    dir.position.copy(LIGHTS.DIRECTIONAL.POSITION);
-    scene.add(dir);
-
-    /* ----------  Earth  ---------- */
-    const earthGeometry = new THREE.SphereGeometry(
-      EARTH_RADIUS,
-      EARTH.SEGMENTS,
-      EARTH.SEGMENTS
-    );
-    const earthTexture = new THREE.TextureLoader().load(EARTH.TEXTURE_PATH);
-    const mat = new THREE.MeshStandardMaterial({ map: earthTexture });
-    const earth = new THREE.Mesh(earthGeometry, mat);
-    scene.add(earth);
-
-    /* --- 初期回転 --- */
-    const BASE = -Math.PI / 2;
-    earth.rotation.y = BASE;
-
-    /* --- ② UTC による自転角を加算 --- */
-    const setInitialRotation = () => {
-      const now = new Date();
-      const s =
-        now.getUTCHours() * 3600 +
-        now.getUTCMinutes() * 60 +
-        now.getUTCSeconds();
-      const daily = (s / 86400) * Math.PI * 2; // 1日で360°
-      earth.rotation.y = BASE + daily;
-    };
-    setInitialRotation();
-
-    /* ----------  Renderer  ---------- */
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    rendererRef.current = renderer;
+    renderer.setSize(el.clientWidth, el.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    mountNode.appendChild(renderer.domElement);
+    THREE.ColorManagement.enabled = true;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    el.appendChild(renderer.domElement);
 
-    /* ----------  Controls  ---------- */
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enablePan = false;
-    controls.enableDamping = true;
-    controls.dampingFactor = CONTROLS.DAMPING_FACTOR;
-    controls.minDistance = CONTROLS.MIN_DISTANCE;
-    controls.maxDistance = CONTROLS.MAX_DISTANCE;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(5, 5, 5);
+    scene.add(dirLight);
 
-    /* ----------  Click → lat/lon  ---------- */
+    const earthInstance = new THREE.Mesh(
+      new THREE.SphereGeometry(EARTH_RADIUS, EARTH.SEGMENTS, EARTH.SEGMENTS),
+      new THREE.MeshStandardMaterial({
+        map: new THREE.TextureLoader().load(EARTH.TEX_PATH),
+      })
+    );
+    earthRef.current = earthInstance;
+    earthInstance.rotation.y = -Math.PI / 2;
+    scene.add(earthInstance);
+
+    const vizGroup = new THREE.Group();
+    visualizationGroupRef.current = vizGroup;
+    earthInstance.add(vizGroup);
+
+    const markerInstance = new THREE.Mesh(
+      new THREE.SphereGeometry(0.03, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffff00 })
+    );
+    markerRef.current = markerInstance;
+    markerInstance.visible = false;
+    earthInstance.add(markerInstance);
+
+    const orbitControls = new OrbitControls(camera, renderer.domElement);
+    controlsRef.current = orbitControls;
+    orbitControls.enableDamping = true;
+    orbitControls.minDistance = 1.1;
+    orbitControls.maxDistance = 10;
+
     const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    const toLatLon = (w: THREE.Vector3) => {
-      const p = w.clone();
-      earth.worldToLocal(p);
+    const mouseVec = new THREE.Vector2();
+    const localToLatLon = (p: THREE.Vector3) => {
+      if (!earthRef.current) return { lat: 0, lon: 0 };
+      earthRef.current.worldToLocal(p);
       const r = p.length();
       const lat = THREE.MathUtils.radToDeg(Math.asin(p.y / r));
       let lon = -THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x));
-      if (lon > 180) lon -= 360;
-      if (lon < -180) lon += 360;
+      lon = ((lon + 180) % 360) - 180;
       return { lat, lon };
     };
 
-    const onClick = (e: MouseEvent) => {
-      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const hit = raycaster.intersectObject(earth)[0];
+    const internalHandleClick = (e: MouseEvent) => {
+      if (!earthRef.current || !markerRef.current || !el) return;
+      const { left, top } = el.getBoundingClientRect();
+      mouseVec.x = ((e.clientX - left) / el.clientWidth) * 2 - 1;
+      mouseVec.y = -((e.clientY - top) / el.clientHeight) * 2 + 1;
+      raycaster.setFromCamera(mouseVec, camera);
+      const hit = raycaster.intersectObject(earthRef.current)[0];
       if (!hit) return;
-      const { lat, lon } = toLatLon(hit.point);
-      console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+      const { lat, lon } = localToLatLon(hit.point.clone());
+      markerRef.current.position.copy(
+        latLonToVector3(lat, lon, EARTH_RADIUS + 0.01)
+      );
+      markerRef.current.visible = true;
       onClickLocation(lat, lon);
     };
-    window.addEventListener("click", onClick);
+    el.addEventListener("click", internalHandleClick);
 
-    /* ----------  Animate  ---------- */
-    let animationId = 0;
-    const animate = () => {
-      animationId = requestAnimationFrame(animate);
-      earth.rotation.y += EARTH.ROTATION_SPEED;
-      controls.update();
-      renderer.render(scene, camera);
+    const loop = () => {
+      animationFrameIdRef.current = requestAnimationFrame(loop);
+      if (earthRef.current) earthRef.current.rotation.y += EARTH.ROT_SPEED;
+      if (controlsRef.current) controlsRef.current.update();
+      if (rendererRef.current) rendererRef.current.render(scene, camera);
     };
-    animate();
+    loop();
 
-    /* ----------  Resize / Cleanup  ---------- */
-    const onResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+    const internalOnResize = () => {
+      if (!el) return;
+      camera.aspect = el.clientWidth / el.clientHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      if (rendererRef.current)
+        rendererRef.current.setSize(el.clientWidth, el.clientHeight);
     };
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", internalOnResize);
 
     return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("click", onClick);
-      mountNode.removeChild(renderer.domElement);
-      controls.dispose();
+      console.log("Cleaning up ThreeModel...");
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
+      window.removeEventListener("resize", internalOnResize);
+      if (el) {
+        // el might be null if mountRef.current was null initially
+        el.removeEventListener("click", internalHandleClick);
+      }
+
+      countryMeshesRef.current.forEach((meshes) => {
+        removeCylinder(meshes.birth);
+        removeCylinder(meshes.death);
+      });
+      countryMeshesRef.current.clear();
+
+      if (markerRef.current) {
+        markerRef.current.geometry.dispose();
+        if (markerRef.current.material instanceof THREE.Material) {
+          markerRef.current.material.dispose();
+        }
+      }
+      if (earthRef.current) {
+        earthRef.current.geometry.dispose();
+        if (earthRef.current.material instanceof THREE.Material) {
+          earthRef.current.material.dispose();
+        }
+      }
+
+      // vizGroup children are disposed by removeCylinder, group itself does not need dispose.
+      // scene children (lights, earthInstance which includes vizGroup and markerInstance) are disposed if they are meshes.
+      // AmbientLight and DirectionalLight do not have dispose methods.
+
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
+      if (rendererRef.current) {
+        if (el && rendererRef.current.domElement.parentNode === el) {
+          el.removeChild(rendererRef.current.domElement);
+        }
+        rendererRef.current.dispose();
+      }
+      sceneRef.current = null; // Clear refs to allow GC
+      earthRef.current = null;
+      visualizationGroupRef.current = null;
+      rendererRef.current = null;
+      controlsRef.current = null;
+      markerRef.current = null;
     };
-  }, [onClickLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* data fetch when year changes */
+  useEffect(() => {
+    console.log("useEffect for [year] running, year:", year);
+    updateVis(year).catch(console.error);
+  }, [year]);
 
   return (
-    <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />
+    <>
+      <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
+      <div ref={mountRef} className="fixed inset-0 z-0" />
+      <span className="absolute bottom-4 right-4 text-white text-xl select-none">
+        {year}
+      </span>
+    </>
   );
-};
-
-export default ThreeModel;
+}
