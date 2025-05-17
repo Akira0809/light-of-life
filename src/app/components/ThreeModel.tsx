@@ -42,7 +42,11 @@ const CONTROLS = {
   DAMPING_FACTOR: 0.1,
 };
 
-const ThreeModel = () => {
+type Props = {
+  onClickLocation: (lat: number, lon: number) => void;
+};
+
+const ThreeModel = ({ onClickLocation }: Props) => {
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -147,6 +151,7 @@ const ThreeModel = () => {
       if (!hit) return;
       const { lat, lon } = toLatLon(hit.point);
       console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
+      onClickLocation(lat, lon);
     };
     window.addEventListener("click", onClick);
 
@@ -175,7 +180,7 @@ const ThreeModel = () => {
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
-  }, []);
+  }, [onClickLocation]);
 
   return (
     <div ref={mountRef} className="w-screen h-screen fixed top-0 left-0 z-0" />
