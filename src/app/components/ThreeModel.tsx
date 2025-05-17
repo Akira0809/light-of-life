@@ -42,11 +42,7 @@ const CONTROLS = {
   DAMPING_FACTOR: 0.1,
 };
 
-type Props = {
-  onClickLocation: (lat: number, lon: number) => void;
-};
-
-const ThreeModel = ({ onClickLocation }: Props) => {
+const ThreeModel = () => {
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -143,54 +139,22 @@ const ThreeModel = ({ onClickLocation }: Props) => {
       return { lat, lon };
     };
 
-    // 🌍 自転制御用フラグとタイマー
-    let isRotating = true;
-    let resumeTimeout: number | null = null;
-    let isWaitingForSecondClick = false;
-
-    const onClick = (event: MouseEvent) => {
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-      
+    const onClick = (e: MouseEvent) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
-
       const hit = raycaster.intersectObject(earth)[0];
       if (!hit) return;
-
-      const intersects = raycaster.intersectObject(earth);
-
-      if (intersects.length > 0) {
-        const point = intersects[0].point;
-        const lat = THREE.MathUtils.radToDeg(Math.asin(point.y / radius));
-        const lon = THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x));
-
-      if (!isWaitingForSecondClick) {  
-        isRotating = false;
-        isWaitingForSecondClick = true;
-
-        if (resumeTimeout) clearTimeout(resumeTimeout);
-        resumeTimeout = window.setTimeout(() => {
-          isRotating = true;
-          isWaitingForSecondClick = false;
-        }, 3000);
-      }else{
-        onClickLocation(lat, lon);
-      }
+      const { lat, lon } = toLatLon(hit.point);
       console.log(`🌐 緯度: ${lat.toFixed(2)}°, 経度: ${lon.toFixed(2)}°`);
-    }
-  };
-    window.addEventListener('click', onClick);
+    };
+    window.addEventListener("click", onClick);
 
     /* ----------  Animate  ---------- */
     let animationId = 0;
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-
       earth.rotation.y += EARTH.ROTATION_SPEED;
-
-      if (isRotating) {
-        earth.rotation.y += 0.001;
-      }
       controls.update();
       renderer.render(scene, camera);
     };
@@ -206,10 +170,8 @@ const ThreeModel = ({ onClickLocation }: Props) => {
 
     return () => {
       cancelAnimationFrame(animationId);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('click', onClick);
-      if (resumeTimeout) clearTimeout(resumeTimeout);
-
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("click", onClick);
       mountNode.removeChild(renderer.domElement);
       controls.dispose();
     };
