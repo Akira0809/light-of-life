@@ -30,3 +30,7 @@ jobs:
 
       - name: Run tests
         run: npm test  # テストがないなら `echo "No tests"` にしておく
+
+        env:
+  SUPABASE_URL: ${{ https://ailxtaycofymuyuvgklw.supabase.co }}
+  SUPABASE_KEY: ${{ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpbHh0YXljb2Z5bXV5dXZna2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY5OTE1MTQsImV4cCI6MjA2MjU2NzUxNH0.lkqy8uHpQCG_Myd_Ci82R5zQTbocF1Y3Qci_qlW327M }}
