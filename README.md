@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Light of Life 🌍
 
-## Getting Started
+## 概要
 
-First, run the development server:
+Light of Life は、インタラクティブな 3D 地球儀上で世界中の人々の生死を体感出来るSNSです。
+
+## 主な機能
+
+- **インタラクティブな 3D 地球儀表示**
+
+  - Three.js を使用した滑らかな 3D 地球の表示
+  - マウス操作による自由な視点移動
+  - 自動回転機能
+
+- **リアルタイムに体感出来る人の生死**
+  - 地球儀上のクリックで正確な緯度・経度を取得し、素早く投稿
+  - 生死の場所が一目でわかる
+
+## 技術スタック
+
+- **フロントエンド**
+  - Next.js
+  - TypeScript
+  - Three.js
+  - TailwindCSS
+
+## 開発環境のセットアップ
 
 ```bash
+# リポジトリのクローン
+git clone https://github.com/your-username/light-of-life.git
+
+# 依存関係のインストール
+npm install
+
+# 開発サーバーの起動
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ライセンス
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+MIT License
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 貢献について
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+プルリクエストやイシューの作成は大歓迎です。大きな変更を加える場合は、まずイシューを作成して変更内容を議論させていただければと思います。
