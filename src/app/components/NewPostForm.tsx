@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence } from "framer-motion";
+import { v4 as uuidv4 } from "uuid";
 
 type Props = {
   lat: number;
@@ -21,28 +22,62 @@ const PostForm = ({ lat, lon, onClose }: Props) => {
   const [error, setError] = useState("");
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const age = form.age ? parseInt(form.age) : null;
+    setError("");
 
-    const { error: insertError } = await supabase.from("posts").insert([
-      {
-        ...form,
-        age,
-        latitude: lat,
-        longitude: lon,
-      },
-    ]);
+    if (
+      lat === undefined ||
+      lon === undefined ||
+      lat === null ||
+      lon === null ||
+      (lat === 0 && lon === 0)
+    ) {
+      setError(
+        "位置情報が取得できませんでした。マップをクリックして位置を指定してください。"
+      );
+      return;
+    }
+
+    if (!form.status) {
+      setError("「生まれた」または「亡くなった」を選択してください。");
+      return;
+    }
+
+    const newId = uuidv4();
+    const ageAsNumber = form.age ? parseInt(form.age, 10) : null;
+    if (form.age && isNaN(ageAsNumber as unknown as number)) {
+      setError("年齢は数値で入力してください。");
+      return;
+    }
+
+    const postData = {
+      id: newId,
+      status: form.status,
+      lat: lat,
+      lon: lon,
+      name: form.name || null,
+      gender: form.gender || null,
+      comment: form.comment || null,
+      age: ageAsNumber,
+      // created_at はDBのデフォルト値を使用
+    };
+
+    const { error: insertError } = await supabase
+      .from("posts")
+      .insert([postData]);
 
     if (insertError) {
-      setError("投稿失敗");
+      console.error("Supabase insert error:", insertError);
+      setError(`投稿失敗: ${insertError.message}`);
     } else {
-      alert("投稿完了");
       onClose();
     }
   };
@@ -102,7 +137,8 @@ const PostForm = ({ lat, lon, onClose }: Props) => {
               name="age"
               value={form.age}
               onChange={handleChange}
-              placeholder="年齢"
+              placeholder="年齢 (任意)"
+              type="number"
               className="w-full border border-gray-600 p-2 rounded bg-gray-700 text-white placeholder-gray-500"
             />
             <textarea
