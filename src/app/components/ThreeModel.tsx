@@ -8,6 +8,7 @@ import PlayButton from "./PlayButton";
 import PostButton from "./PostButton";
 import { supabase } from "@/lib/supabase";
 import { latLonToVector3 } from "@/lib/geo";
+import UserPin from "./UserPin";
 
 /* ────────────────  CONSTS  ──────────────── */
 
@@ -111,6 +112,10 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [year, setYear] = useState(1950);
+  const [currentPinLocation, setCurrentPinLocation] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -457,11 +462,50 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
     updateVis(year).catch(console.error);
   }, [year, updateVis]);
 
+  // isPlaying 状態が変わった時に updateVis を呼び出す
+  useEffect(() => {
+    console.log("useEffect for [isPlaying] running, isPlaying:", isPlaying);
+    updateVis(year).catch(console.error);
+  }, [isPlaying, year, updateVis]);
+
+  // Get user's current location to set a pin
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentPinLocation({
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error("Error getting user location:", error);
+          // Optionally set a default location if geolocation fails or is denied
+          // setCurrentPinLocation({ lat: 35.6895, lon: 139.6917 }); // Tokyo as default
+        }
+      );
+    } else {
+      console.warn("Geolocation is not supported by this browser.");
+      // Optionally set a default location
+      // setCurrentPinLocation({ lat: 35.6895, lon: 139.6917 }); // Tokyo as default
+    }
+  }, []); // Empty dependency array to run once on mount
+
   return (
     <>
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
       <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
+
+      {/* ユーザーピン */}
+      {visualizationGroupRef.current && currentPinLocation && (
+        <UserPin
+          group={visualizationGroupRef.current}
+          lat={currentPinLocation.lat}
+          lon={currentPinLocation.lon}
+        />
+      )}
+
       <span className="absolute bottom-4 right-4 text-white text-xl select-none">
         {year}
       </span>
