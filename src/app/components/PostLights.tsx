@@ -21,10 +21,9 @@ interface PostData {
   lat: number;
   lon: number;
   status: string; // イベントの種類 (例: '生まれた', '亡くなった')
-  message?: string;
+  comment?: string;
   name?: string;
   gender?: string;
-  comment?: string;
   age?: number;
 }
 
@@ -53,7 +52,7 @@ async function fetchPosts(): Promise<PostData[]> {
   const { data, error } = await supabase
     .from("posts")
     .select(
-      "id, created_at, lat, lon, status, message, name, gender, comment, age"
+      "id, created_at, lat, lon, status, name, gender, comment, age"
     ) // カラム名を実際のテーブルに合わせる
     .order("created_at", { ascending: false }) // 新しいものから処理する方が良い場合
     .limit(100); // 初期表示件数に上限を設ける（パフォーマンス考慮）

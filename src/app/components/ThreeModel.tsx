@@ -671,6 +671,45 @@ export default function ThreeModel({
     }
   }, []);
 
+  useEffect(() => {
+    if (!visualizationGroupRef.current || !sceneRef.current) {
+      console.warn("Visualization group or scene not initialized.");
+      return;
+    }
+
+    const subscription = supabase
+      .channel("realtime:posts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts" },
+        (payload) => {
+          console.log("New post received:", payload.new);
+
+          const { lat, lon, status } = payload.new; // status: "生まれた" or "死んだ"
+          const position = latLonToVector3(lat, lon, EARTH_RADIUS);
+          const color =
+            status === "生まれた" ? VIS.BIRTH_COLOR : VIS.DEATH_COLOR;
+
+          const light = new THREE.PointLight(color, 1, 0.5);
+          light.position.copy(position);
+          if (sceneRef.current) {
+            sceneRef.current.add(light);
+          }
+
+          // Fade out and remove the light after a short duration
+          setTimeout(() => {
+            sceneRef.current?.remove(light);
+          }, 3000); // Adjust duration as needed
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log("Cleaning up Supabase subscription.");
+      supabase.removeChannel(subscription);
+    };
+  }, []);
+
   return (
     <div ref={mountRef} style={{ width: "100%", height: "100vh" }}>
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
