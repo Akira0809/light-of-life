@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import PlayButton from "./PlayButton";
+import PostButton from "./PostButton";
 import { supabase } from "@/lib/supabase";
 import { latLonToVector3 } from "@/lib/geo";
 
@@ -48,7 +49,7 @@ type CountryMeshes = {
   death?: THREE.Mesh;
 };
 
-type Props = { onClickLocation: (lat: number, lon: number) => void };
+type Props = { onPostButtonClick: () => void };
 
 /* ────────────────  HELPERS  ──────────────── */
 
@@ -88,7 +89,7 @@ async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
 
 /* ─────────────────────────────────────────── */
 
-export default function ThreeModel({ onClickLocation }: Props) {
+export default function ThreeModel({ onPostButtonClick }: Props) {
   console.log("ThreeModel component rendering");
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -102,8 +103,11 @@ export default function ThreeModel({ onClickLocation }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [year, setYear] = useState(1950);
 
-  const markerRef = useRef<THREE.Mesh | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handlePost = () => {
+    onPostButtonClick();
+  };
 
   const removeCylinder = useCallback((mesh: THREE.Mesh | undefined) => {
     if (mesh) {
@@ -307,7 +311,6 @@ export default function ThreeModel({ onClickLocation }: Props) {
     }
     const el = mountRef.current;
 
-    // countryMeshesRef.current の値をここでキャプチャ
     const currentCountryMeshes = countryMeshesRef.current;
 
     const scene = new THREE.Scene();
@@ -349,48 +352,11 @@ export default function ThreeModel({ onClickLocation }: Props) {
     visualizationGroupRef.current = vizGroup;
     earthInstance.add(vizGroup);
 
-    const markerInstance = new THREE.Mesh(
-      new THREE.SphereGeometry(0.03, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xffff00 })
-    );
-    markerRef.current = markerInstance;
-    markerInstance.visible = false;
-    earthInstance.add(markerInstance);
-
     const orbitControls = new OrbitControls(camera, renderer.domElement);
     controlsRef.current = orbitControls;
     orbitControls.enableDamping = true;
     orbitControls.minDistance = 1.1;
     orbitControls.maxDistance = 10;
-
-    const raycaster = new THREE.Raycaster();
-    const mouseVec = new THREE.Vector2();
-    const localToLatLon = (p: THREE.Vector3) => {
-      if (!earthRef.current) return { lat: 0, lon: 0 };
-      earthRef.current.worldToLocal(p);
-      const r = p.length();
-      const lat = THREE.MathUtils.radToDeg(Math.asin(p.y / r));
-      let lon = -THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x));
-      lon = ((lon + 180) % 360) - 180;
-      return { lat, lon };
-    };
-
-    const internalHandleClick = (e: MouseEvent) => {
-      if (!earthRef.current || !markerRef.current || !el) return;
-      const { left, top } = el.getBoundingClientRect();
-      mouseVec.x = ((e.clientX - left) / el.clientWidth) * 2 - 1;
-      mouseVec.y = -((e.clientY - top) / el.clientHeight) * 2 + 1;
-      raycaster.setFromCamera(mouseVec, camera);
-      const hit = raycaster.intersectObject(earthRef.current)[0];
-      if (!hit) return;
-      const { lat, lon } = localToLatLon(hit.point.clone());
-      markerRef.current.position.copy(
-        latLonToVector3(lat, lon, EARTH_RADIUS + 0.01)
-      );
-      markerRef.current.visible = true;
-      onClickLocation(lat, lon);
-    };
-    el.addEventListener("click", internalHandleClick);
 
     const loop = () => {
       animationFrameIdRef.current = requestAnimationFrame(loop);
@@ -415,23 +381,13 @@ export default function ThreeModel({ onClickLocation }: Props) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
       window.removeEventListener("resize", internalOnResize);
-      if (el) {
-        el.removeEventListener("click", internalHandleClick);
-      }
 
-      // キャプチャした変数を使用
       currentCountryMeshes.forEach((meshes) => {
         removeCylinder(meshes.birth);
         removeCylinder(meshes.death);
       });
       currentCountryMeshes.clear();
 
-      if (markerRef.current) {
-        markerRef.current.geometry.dispose();
-        if (markerRef.current.material instanceof THREE.Material) {
-          markerRef.current.material.dispose();
-        }
-      }
       if (earthRef.current) {
         earthRef.current.geometry.dispose();
         if (earthRef.current.material instanceof THREE.Material) {
@@ -453,10 +409,9 @@ export default function ThreeModel({ onClickLocation }: Props) {
       visualizationGroupRef.current = null;
       rendererRef.current = null;
       controlsRef.current = null;
-      markerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onPostButtonClick]);
 
   /* data fetch when year changes */
   useEffect(() => {
@@ -467,6 +422,7 @@ export default function ThreeModel({ onClickLocation }: Props) {
   return (
     <>
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
+      <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
       <span className="absolute bottom-4 right-4 text-white text-xl select-none">
         {year}
