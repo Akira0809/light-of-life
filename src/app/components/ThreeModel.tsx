@@ -445,9 +445,14 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
       <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
-      <span className="absolute bottom-4 right-4 text-white text-xl select-none">
-        {year}
-      </span>
+      {isPlaying && (
+        <span
+          className="absolute top-4 left-4 text-white text-4xl font-semibold select-none"
+          style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.7)" }}
+        >
+          {year}
+        </span>
+      )}
     </>
   );
 }
