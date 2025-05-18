@@ -30,6 +30,13 @@ const VIS = {
   CYLINDER_HORIZONTAL_GAP: 0.005, // 水平方向の円柱間の全隙間
 };
 
+const CLICKED_PIN = {
+  COLOR: 0xffff00, // 黄色
+  HEIGHT: 0.06, // UserPinより少し高くする
+  RADIUS: 0.012, // UserPinより少し太くする
+  RADIAL_SEGMENTS: 16,
+};
+
 /* ────────────────  TYPES  ──────────────── */
 type Props = {
   onPostButtonClick: () => void;
@@ -112,6 +119,11 @@ export default function ThreeModel({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
+  const clickedPinRef = useRef<THREE.Mesh | null>(null);
+
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const raycasterRef = useRef<THREE.Raycaster | null>(null);
+  const mouseRef = useRef<THREE.Vector2 | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [year, setYear] = useState(1950);
@@ -129,7 +141,6 @@ export default function ThreeModel({
   const toLatLon = useCallback((point: THREE.Vector3) => {
     const earth = earthRef.current;
     if (!earth) return { lat: 0, lon: 0 };
-
     const p = point.clone();
     earth.worldToLocal(p);
     const r = p.length();
@@ -149,6 +160,82 @@ export default function ThreeModel({
       visualizationGroupRef.current?.remove(mesh);
     }
   }, []);
+
+  const removeClickedPin = useCallback(() => {
+    if (clickedPinRef.current) {
+      console.log("Removing clicked pin");
+      clickedPinRef.current.geometry.dispose();
+      if (clickedPinRef.current.material instanceof THREE.Material) {
+        clickedPinRef.current.material.dispose();
+      }
+      visualizationGroupRef.current?.remove(clickedPinRef.current);
+      clickedPinRef.current = null;
+    }
+  }, []);
+
+  const onClickHandler = useCallback(
+    (e: MouseEvent) => {
+      if (!isFormVisible) {
+        console.log("onClickHandler: Form not visible, ignoring click.");
+        return;
+      }
+      if (
+        !earthRef.current ||
+        !visualizationGroupRef.current ||
+        !cameraRef.current ||
+        !raycasterRef.current ||
+        !mouseRef.current
+      ) {
+        console.log("onClickHandler: Crucial refs are null, ignoring click.");
+        return;
+      }
+
+      const mouse = mouseRef.current;
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = raycasterRef.current;
+      raycaster.setFromCamera(mouse, cameraRef.current);
+
+      const intersects = raycaster.intersectObject(earthRef.current);
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        removeClickedPin();
+
+        const { lat, lon } = toLatLon(hit.point);
+        console.log("ThreeModel click registered (for pin):", { lat, lon });
+
+        const pinGeometry = new THREE.ConeGeometry(
+          CLICKED_PIN.RADIUS,
+          CLICKED_PIN.HEIGHT,
+          CLICKED_PIN.RADIAL_SEGMENTS
+        );
+        const pinMaterial = new THREE.MeshBasicMaterial({
+          color: CLICKED_PIN.COLOR,
+        });
+        const newPinMesh = new THREE.Mesh(pinGeometry, pinMaterial);
+
+        const surfacePosition = latLonToVector3(lat, lon, EARTH_RADIUS);
+        const normal = surfacePosition.clone().normalize();
+
+        newPinMesh.position
+          .copy(surfacePosition)
+          .addScaledVector(normal, CLICKED_PIN.HEIGHT / 2);
+        newPinMesh.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          normal
+        );
+
+        visualizationGroupRef.current.add(newPinMesh);
+        clickedPinRef.current = newPinMesh;
+
+        onClickLocation(lat, lon);
+      } else {
+        console.log("onClickHandler: No intersection with Earth.");
+      }
+    },
+    [isFormVisible, onClickLocation, toLatLon, removeClickedPin]
+  );
 
   const createOrUpdateCylinder = useCallback(
     (
@@ -351,17 +438,12 @@ export default function ThreeModel({
 
   /* ────────────────  INITIAL THREE  ──────────────── */
   useEffect(() => {
-    console.log(
-      "Initial useEffect (mount) running, isFormVisible (in useEffect):",
-      isFormVisible
-    );
+    console.log("Initial useEffect (mount) running");
     if (!mountRef.current) {
       console.log("mountRef.current is null in initial useEffect");
       return;
     }
     const el = mountRef.current;
-
-    const currentCountryMeshes = countryMeshesRef.current;
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
@@ -373,6 +455,7 @@ export default function ThreeModel({
       1000
     );
     camera.position.set(0, 0, CAMERA_POSITION_Z);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     rendererRef.current = renderer;
@@ -382,6 +465,9 @@ export default function ThreeModel({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     el.appendChild(renderer.domElement);
+
+    raycasterRef.current = new THREE.Raycaster();
+    mouseRef.current = new THREE.Vector2();
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const dirLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -408,61 +494,36 @@ export default function ThreeModel({
     orbitControls.minDistance = 1.1;
     orbitControls.maxDistance = 10;
 
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    const onClickHandler = (e: MouseEvent) => {
-      if (!isFormVisible) {
-        console.log("ThreeModel click ignored, form is not visible.");
-        return;
-      }
-      if (!earthRef.current) {
-        console.log("ThreeModel click ignored, earthRef is null.");
-        return;
-      }
-      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-
-      const hit = raycaster.intersectObject(earthRef.current)[0];
-      if (!hit) return;
-
-      const { lat, lon } = toLatLon(hit.point);
-      console.log("ThreeModel click registered:", { lat, lon, isFormVisible });
-      onClickLocation(lat, lon);
-    };
-    window.addEventListener("click", onClickHandler);
-
     const loop = () => {
       animationFrameIdRef.current = requestAnimationFrame(loop);
       if (earthRef.current) earthRef.current.rotation.y += EARTH.ROT_SPEED;
       if (controlsRef.current) controlsRef.current.update();
-      if (rendererRef.current) rendererRef.current.render(scene, camera);
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
     };
     loop();
 
     const internalOnResize = () => {
-      if (!el) return;
-      camera.aspect = el.clientWidth / el.clientHeight;
-      camera.updateProjectionMatrix();
-      if (rendererRef.current)
-        rendererRef.current.setSize(el.clientWidth, el.clientHeight);
+      if (!el || !cameraRef.current || !rendererRef.current) return;
+      cameraRef.current.aspect = el.clientWidth / el.clientHeight;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(el.clientWidth, el.clientHeight);
     };
     window.addEventListener("resize", internalOnResize);
 
     return () => {
-      console.log("Cleaning up ThreeModel...");
+      console.log("Cleaning up ThreeModel (main useEffect)...");
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
       window.removeEventListener("resize", internalOnResize);
-      window.removeEventListener("click", onClickHandler);
-
-      currentCountryMeshes.forEach((meshes) => {
+      removeClickedPin();
+      countryMeshesRef.current.forEach((meshes) => {
         removeCylinder(meshes.birth);
         removeCylinder(meshes.death);
       });
-      currentCountryMeshes.clear();
+      countryMeshesRef.current.clear();
 
       if (earthRef.current) {
         earthRef.current.geometry.dispose();
@@ -470,10 +531,7 @@ export default function ThreeModel({
           earthRef.current.material.dispose();
         }
       }
-
-      if (controlsRef.current) {
-        controlsRef.current.dispose();
-      }
+      if (controlsRef.current) controlsRef.current.dispose();
       if (rendererRef.current) {
         if (el && rendererRef.current.domElement.parentNode === el) {
           el.removeChild(rendererRef.current.domElement);
@@ -485,26 +543,46 @@ export default function ThreeModel({
       visualizationGroupRef.current = null;
       rendererRef.current = null;
       controlsRef.current = null;
+      cameraRef.current = null;
+      raycasterRef.current = null;
+      mouseRef.current = null;
     };
-  }, [onPostButtonClick, isFormVisible, onClickLocation, toLatLon]);
+  }, []);
 
-  /* data fetch when year changes */
+  useEffect(() => {
+    if (isFormVisible) {
+      console.log("Attaching click listener as form is visible.");
+      window.addEventListener("click", onClickHandler);
+    } else {
+      console.log(
+        "Detaching click listener as form is not visible (or handler changed)."
+      );
+      window.removeEventListener("click", onClickHandler);
+    }
+    return () => {
+      console.log(
+        "Cleaning up click listener (isFormVisible or onClickHandler changed)."
+      );
+      window.removeEventListener("click", onClickHandler);
+    };
+  }, [isFormVisible, onClickHandler]);
+
+  useEffect(() => {
+    if (!isFormVisible) {
+      removeClickedPin();
+    }
+  }, [isFormVisible, removeClickedPin]);
+
   useEffect(() => {
     console.log("useEffect for [year] running, year:", year);
     updateVis(year).catch(console.error);
   }, [year, updateVis]);
 
-  // isPlaying 状態が変わった時に updateVis を呼び出す
   useEffect(() => {
     console.log("useEffect for [isPlaying] running, isPlaying:", isPlaying);
-    // yearが変わった時にもupdateVisが呼ばれるので、ここではisPlayingが変わった時だけ再実行したいが、
-    // updateVisがyearに依存しているため、yearも依存配列に含める必要がある。
-    // 結果として、isPlayingかyearのどちらかが変わると実行される。
-    // isPlayingの変更時に最新のyearでデータを再取得・表示/非表示するのは正しい挙動。
     updateVis(year).catch(console.error);
   }, [isPlaying, year, updateVis]);
 
-  // Get user's current location to set a pin
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -516,16 +594,12 @@ export default function ThreeModel({
         },
         (error) => {
           console.error("Error getting user location:", error);
-          // Optionally set a default location if geolocation fails or is denied
-          // setCurrentPinLocation({ lat: 35.6895, lon: 139.6917 }); // Tokyo as default
         }
       );
     } else {
       console.warn("Geolocation is not supported by this browser.");
-      // Optionally set a default location
-      // setCurrentPinLocation({ lat: 35.6895, lon: 139.6917 }); // Tokyo as default
     }
-  }, []); // Empty dependency array to run once on mount
+  }, []);
 
   return (
     <>
@@ -533,7 +607,6 @@ export default function ThreeModel({
       <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
 
-      {/* ユーザーピン */}
       {visualizationGroupRef.current && currentPinLocation && (
         <UserPin
           group={visualizationGroupRef.current}
