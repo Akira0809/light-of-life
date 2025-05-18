@@ -34,6 +34,7 @@ const VIS = {
 type Props = {
   onPostButtonClick: () => void;
   onClickLocation: (lat: number, lon: number) => void;
+  isFormVisible: boolean;
 };
 
 type VitalStatsFromSupabase = {
@@ -100,8 +101,9 @@ async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
 export default function ThreeModel({
   onPostButtonClick,
   onClickLocation,
+  isFormVisible,
 }: Props) {
-  console.log("ThreeModel component rendering");
+  console.log("ThreeModel component rendering, isFormVisible:", isFormVisible);
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const earthRef = useRef<THREE.Mesh | null>(null);
@@ -123,7 +125,8 @@ export default function ThreeModel({
   const handlePost = () => {
     onPostButtonClick();
   };
-  const toLatLon = (point: THREE.Vector3) => {
+
+  const toLatLon = useCallback((point: THREE.Vector3) => {
     const earth = earthRef.current;
     if (!earth) return { lat: 0, lon: 0 };
 
@@ -135,7 +138,7 @@ export default function ThreeModel({
     if (lon > 180) lon -= 360;
     if (lon < -180) lon += 360;
     return { lat, lon };
-  };
+  }, []);
 
   const removeCylinder = useCallback((mesh: THREE.Mesh | undefined) => {
     if (mesh) {
@@ -348,7 +351,10 @@ export default function ThreeModel({
 
   /* ────────────────  INITIAL THREE  ──────────────── */
   useEffect(() => {
-    console.log("Initial useEffect (mount) running");
+    console.log(
+      "Initial useEffect (mount) running, isFormVisible (in useEffect):",
+      isFormVisible
+    );
     if (!mountRef.current) {
       console.log("mountRef.current is null in initial useEffect");
       return;
@@ -406,15 +412,23 @@ export default function ThreeModel({
     const mouse = new THREE.Vector2();
 
     const onClickHandler = (e: MouseEvent) => {
+      if (!isFormVisible) {
+        console.log("ThreeModel click ignored, form is not visible.");
+        return;
+      }
+      if (!earthRef.current) {
+        console.log("ThreeModel click ignored, earthRef is null.");
+        return;
+      }
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
 
-      const hit = raycaster.intersectObject(earthRef.current!)[0];
+      const hit = raycaster.intersectObject(earthRef.current)[0];
       if (!hit) return;
 
       const { lat, lon } = toLatLon(hit.point);
-      console.log("ThreeModel click", lat, lon);
+      console.log("ThreeModel click registered:", { lat, lon, isFormVisible });
       onClickLocation(lat, lon);
     };
     window.addEventListener("click", onClickHandler);
@@ -442,6 +456,7 @@ export default function ThreeModel({
         cancelAnimationFrame(animationFrameIdRef.current);
       }
       window.removeEventListener("resize", internalOnResize);
+      window.removeEventListener("click", onClickHandler);
 
       currentCountryMeshes.forEach((meshes) => {
         removeCylinder(meshes.birth);
@@ -471,8 +486,7 @@ export default function ThreeModel({
       rendererRef.current = null;
       controlsRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onPostButtonClick]);
+  }, [onPostButtonClick, isFormVisible, onClickLocation, toLatLon]);
 
   /* data fetch when year changes */
   useEffect(() => {
