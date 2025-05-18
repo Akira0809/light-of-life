@@ -12,7 +12,6 @@ import UserPin from "./UserPin";
 
 /* ────────────────  CONSTS  ──────────────── */
 
-
 const EARTH_RADIUS = 1;
 const CAMERA_FOV = 60;
 const CAMERA_POSITION_Z = 2.5;
@@ -35,7 +34,7 @@ const VIS = {
 type Props = {
   onPostButtonClick: () => void;
   onClickLocation: (lat: number, lon: number) => void;
-}
+};
 
 type VitalStatsFromSupabase = {
   iso3: string;
@@ -56,7 +55,6 @@ type CountryMeshes = {
   birth?: THREE.Mesh;
   death?: THREE.Mesh;
 };
-
 
 /* ────────────────  HELPERS  ──────────────── */
 
@@ -99,7 +97,10 @@ async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
 
 /* ─────────────────────────────────────────── */
 
-export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Props) {
+export default function ThreeModel({
+  onPostButtonClick,
+  onClickLocation,
+}: Props) {
   console.log("ThreeModel component rendering");
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -122,7 +123,7 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
   const handlePost = () => {
     onPostButtonClick();
   };
- const toLatLon = (point: THREE.Vector3) => {
+  const toLatLon = (point: THREE.Vector3) => {
     const earth = earthRef.current;
     if (!earth) return { lat: 0, lon: 0 };
 
@@ -199,7 +200,7 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
   /* ────────────────  DATA UPDATE  ──────────────── */
   const updateVis = useCallback(
     async (y: number) => {
-      console.log("updateVis called with year:", y);
+      console.log("updateVis called with year:", y, "isPlaying:", isPlaying);
       if (
         !visualizationGroupRef.current ||
         !countryMeshesRef.current ||
@@ -210,6 +211,17 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
       }
 
       const currentMeshesMap = countryMeshesRef.current;
+
+      if (!isPlaying) {
+        console.log("isPlaying is false, removing all cylinders.");
+        currentMeshesMap.forEach((meshes) => {
+          removeCylinder(meshes.birth);
+          removeCylinder(meshes.death);
+        });
+        currentMeshesMap.clear();
+        return;
+      }
+
       const vitalData = await fetchMatrices(y);
       const processedIso3s = new Set<string>();
 
@@ -217,8 +229,14 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
         return;
       }
 
-      const maxBirths = Math.max(...vitalData.map((d) => d.births), 1);
-      const maxDeaths = Math.max(...vitalData.map((d) => d.deaths), 1);
+      const maxBirths =
+        vitalData.length > 0
+          ? Math.max(...vitalData.map((d) => d.births), 1)
+          : 1;
+      const maxDeaths =
+        vitalData.length > 0
+          ? Math.max(...vitalData.map((d) => d.deaths), 1)
+          : 1;
 
       vitalData.forEach((data) => {
         processedIso3s.add(data.iso3);
@@ -307,7 +325,7 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
         }
       }
     },
-    [removeCylinder, createOrUpdateCylinder]
+    [removeCylinder, createOrUpdateCylinder, isPlaying]
   );
 
   /* ────────────────  PLAY/PAUSE  ──────────────── */
@@ -387,19 +405,19 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-     const onClickHandler = (e: MouseEvent) => {
-    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
+    const onClickHandler = (e: MouseEvent) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
 
-    const hit = raycaster.intersectObject(earthRef.current!)[0];
-    if (!hit) return;
+      const hit = raycaster.intersectObject(earthRef.current!)[0];
+      if (!hit) return;
 
-    const { lat, lon } = toLatLon(hit.point);
-    console.log('ThreeModel click', lat, lon);
-    onClickLocation(lat, lon);
-  };
-  window.addEventListener('click', onClickHandler);
+      const { lat, lon } = toLatLon(hit.point);
+      console.log("ThreeModel click", lat, lon);
+      onClickLocation(lat, lon);
+    };
+    window.addEventListener("click", onClickHandler);
 
     const loop = () => {
       animationFrameIdRef.current = requestAnimationFrame(loop);
@@ -465,6 +483,10 @@ export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Prop
   // isPlaying 状態が変わった時に updateVis を呼び出す
   useEffect(() => {
     console.log("useEffect for [isPlaying] running, isPlaying:", isPlaying);
+    // yearが変わった時にもupdateVisが呼ばれるので、ここではisPlayingが変わった時だけ再実行したいが、
+    // updateVisがyearに依存しているため、yearも依存配列に含める必要がある。
+    // 結果として、isPlayingかyearのどちらかが変わると実行される。
+    // isPlayingの変更時に最新のyearでデータを再取得・表示/非表示するのは正しい挙動。
     updateVis(year).catch(console.error);
   }, [isPlaying, year, updateVis]);
 
