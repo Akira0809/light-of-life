@@ -8,9 +8,11 @@ import PlayButton from "./PlayButton";
 import PostButton from "./PostButton";
 import { supabase } from "@/lib/supabase";
 import { latLonToVector3 } from "@/lib/geo";
+import UserPin from "./UserPin";
 import PostLights from "./PostLights";
 
 /* ────────────────  CONSTS  ──────────────── */
+
 const EARTH_RADIUS = 1;
 const CAMERA_FOV = 60;
 const CAMERA_POSITION_Z = 2.5;
@@ -29,7 +31,20 @@ const VIS = {
   CYLINDER_HORIZONTAL_GAP: 0.005, // 水平方向の円柱間の全隙間
 };
 
+const CLICKED_PIN = {
+  COLOR: 0xffff00, // 黄色
+  HEIGHT: 0.06, // UserPinより少し高くする
+  RADIUS: 0.012, // UserPinより少し太くする
+  RADIAL_SEGMENTS: 16,
+};
+
 /* ────────────────  TYPES  ──────────────── */
+type Props = {
+  onPostButtonClick: () => void;
+  onClickLocation: (lat: number, lon: number) => void;
+  isFormVisible: boolean;
+};
+
 type VitalStatsFromSupabase = {
   iso3: string;
   births: number;
@@ -50,8 +65,6 @@ type CountryMeshes = {
   death?: THREE.Mesh;
 };
 
-type Props = { onPostButtonClick: () => void };
-
 /* ────────────────  HELPERS  ──────────────── */
 
 async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
@@ -70,6 +83,8 @@ async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
   if (error) throw error;
   if (!data?.length) return [];
 
+  console.log("Data fetched from Supabase:", data);
+
   const processedData = data
     .filter(
       (
@@ -85,13 +100,18 @@ async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
       lat: r.countries.lat,
       lon: r.countries.lon,
     }));
+  console.log("Processed data:", processedData);
   return processedData;
 }
 
 /* ─────────────────────────────────────────── */
 
-export default function ThreeModel({ onPostButtonClick }: Props) {
-  console.log("ThreeModel component rendering");
+export default function ThreeModel({
+  onPostButtonClick,
+  onClickLocation,
+  isFormVisible,
+}: Props) {
+  console.log("ThreeModel component rendering, isFormVisible:", isFormVisible);
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const earthRef = useRef<THREE.Mesh | null>(null);
@@ -100,9 +120,18 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
+  const clickedPinRef = useRef<THREE.Mesh | null>(null);
+
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const raycasterRef = useRef<THREE.Raycaster | null>(null);
+  const mouseRef = useRef<THREE.Vector2 | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [year, setYear] = useState(1950);
+  const [currentPinLocation, setCurrentPinLocation] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
   const [isSceneInitialized, setIsSceneInitialized] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,6 +139,19 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
   const handlePost = () => {
     onPostButtonClick();
   };
+
+  const toLatLon = useCallback((point: THREE.Vector3) => {
+    const earth = earthRef.current;
+    if (!earth) return { lat: 0, lon: 0 };
+    const p = point.clone();
+    earth.worldToLocal(p);
+    const r = p.length();
+    const lat = THREE.MathUtils.radToDeg(Math.asin(p.y / r));
+    let lon = -THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x));
+    if (lon > 180) lon -= 360;
+    if (lon < -180) lon += 360;
+    return { lat, lon };
+  }, []);
 
   const removeCylinder = useCallback((mesh: THREE.Mesh | undefined) => {
     if (mesh) {
@@ -120,6 +162,82 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       visualizationGroupRef.current?.remove(mesh);
     }
   }, []);
+
+  const removeClickedPin = useCallback(() => {
+    if (clickedPinRef.current) {
+      console.log("Removing clicked pin");
+      clickedPinRef.current.geometry.dispose();
+      if (clickedPinRef.current.material instanceof THREE.Material) {
+        clickedPinRef.current.material.dispose();
+      }
+      visualizationGroupRef.current?.remove(clickedPinRef.current);
+      clickedPinRef.current = null;
+    }
+  }, []);
+
+  const onClickHandler = useCallback(
+    (e: MouseEvent) => {
+      if (!isFormVisible) {
+        console.log("onClickHandler: Form not visible, ignoring click.");
+        return;
+      }
+      if (
+        !earthRef.current ||
+        !visualizationGroupRef.current ||
+        !cameraRef.current ||
+        !raycasterRef.current ||
+        !mouseRef.current
+      ) {
+        console.log("onClickHandler: Crucial refs are null, ignoring click.");
+        return;
+      }
+
+      const mouse = mouseRef.current;
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = raycasterRef.current;
+      raycaster.setFromCamera(mouse, cameraRef.current);
+
+      const intersects = raycaster.intersectObject(earthRef.current);
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        removeClickedPin();
+
+        const { lat, lon } = toLatLon(hit.point);
+        console.log("ThreeModel click registered (for pin):", { lat, lon });
+
+        const pinGeometry = new THREE.ConeGeometry(
+          CLICKED_PIN.RADIUS,
+          CLICKED_PIN.HEIGHT,
+          CLICKED_PIN.RADIAL_SEGMENTS
+        );
+        const pinMaterial = new THREE.MeshBasicMaterial({
+          color: CLICKED_PIN.COLOR,
+        });
+        const newPinMesh = new THREE.Mesh(pinGeometry, pinMaterial);
+
+        const surfacePosition = latLonToVector3(lat, lon, EARTH_RADIUS);
+        const normal = surfacePosition.clone().normalize();
+
+        newPinMesh.position
+          .copy(surfacePosition)
+          .addScaledVector(normal, CLICKED_PIN.HEIGHT / 2);
+        newPinMesh.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          normal
+        );
+
+        visualizationGroupRef.current.add(newPinMesh);
+        clickedPinRef.current = newPinMesh;
+
+        onClickLocation(lat, lon);
+      } else {
+        console.log("onClickHandler: No intersection with Earth.");
+      }
+    },
+    [isFormVisible, onClickLocation, toLatLon, removeClickedPin]
+  );
 
   const createOrUpdateCylinder = useCallback(
     (
@@ -171,7 +289,6 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
     },
     []
   );
-
   /* ────────────────  DATA UPDATE  ──────────────── */
   const updateVis = useCallback(
     async (y: number) => {
@@ -188,16 +305,12 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       const currentMeshesMap = countryMeshesRef.current;
 
       if (!isPlaying) {
-        console.log("isPlaying is false, clearing all visualizations.");
-        const currentIso3sToClear = Array.from(currentMeshesMap.keys());
-        for (const iso3 of currentIso3sToClear) {
-          const meshesToDelete = currentMeshesMap.get(iso3);
-          if (meshesToDelete) {
-            removeCylinder(meshesToDelete.birth);
-            removeCylinder(meshesToDelete.death);
-          }
-          currentMeshesMap.delete(iso3);
-        }
+        console.log("isPlaying is false, removing all cylinders.");
+        currentMeshesMap.forEach((meshes) => {
+          removeCylinder(meshes.birth);
+          removeCylinder(meshes.death);
+        });
+        currentMeshesMap.clear();
         return;
       }
 
@@ -208,8 +321,14 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
         return;
       }
 
-      const maxBirths = Math.max(...vitalData.map((d) => d.births), 1);
-      const maxDeaths = Math.max(...vitalData.map((d) => d.deaths), 1);
+      const maxBirths =
+        vitalData.length > 0
+          ? Math.max(...vitalData.map((d) => d.births), 1)
+          : 1;
+      const maxDeaths =
+        vitalData.length > 0
+          ? Math.max(...vitalData.map((d) => d.deaths), 1)
+          : 1;
 
       vitalData.forEach((data) => {
         processedIso3s.add(data.iso3);
@@ -350,6 +469,7 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       1000
     );
     camera.position.set(0, 0, CAMERA_POSITION_Z);
+    cameraRef.current = camera;
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -428,17 +548,17 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
 
     // Cleanup
     return () => {
-      console.log("Cleaning up ThreeModel...");
+      console.log("Cleaning up ThreeModel (main useEffect)...");
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
       window.removeEventListener("resize", internalOnResize);
-
-      // Dispose THREE.js objects
-      countryMeshesRef.current.forEach((meshes: CountryMeshes) => {
+      removeClickedPin();
+      countryMeshesRef.current.forEach((meshes) => {
         removeCylinder(meshes.birth);
         removeCylinder(meshes.death);
       });
+      countryMeshesRef.current.clear();
       countryMeshesRef.current.clear();
 
       if (earthRef.current) {
@@ -456,10 +576,7 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       scene.remove(directionalLight);
       ambientLight.dispose();
       directionalLight.dispose();
-
-      if (controlsRef.current) {
-        controlsRef.current.dispose();
-      }
+      if (controlsRef.current) controlsRef.current.dispose();
       if (rendererRef.current) {
         // DOM要素の削除はmountRef.currentのライフサイクルに任せるか、
         // ここで明示的に削除するならcurrentMountのチェックが必要
@@ -477,14 +594,63 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       visualizationGroupRef.current = null;
       rendererRef.current = null;
       controlsRef.current = null;
-      setIsSceneInitialized(false); // Scene is no longer initialized
+      cameraRef.current = null;
+      raycasterRef.current = null;
+      mouseRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Mount/unmountのみで実行
+  }, []);
 
-  const togglePlay = () => {
-    setIsPlaying((prev) => !prev);
-  };
+  useEffect(() => {
+    if (isFormVisible) {
+      console.log("Attaching click listener as form is visible.");
+      window.addEventListener("click", onClickHandler);
+    } else {
+      console.log(
+        "Detaching click listener as form is not visible (or handler changed)."
+      );
+      window.removeEventListener("click", onClickHandler);
+    }
+    return () => {
+      console.log(
+        "Cleaning up click listener (isFormVisible or onClickHandler changed)."
+      );
+      window.removeEventListener("click", onClickHandler);
+    };
+  }, [isFormVisible, onClickHandler]);
+
+  useEffect(() => {
+    if (!isFormVisible) {
+      removeClickedPin();
+    }
+  }, [isFormVisible, removeClickedPin]);
+
+  useEffect(() => {
+    console.log("useEffect for [year] running, year:", year);
+    updateVis(year).catch(console.error);
+  }, [year, updateVis]);
+
+  useEffect(() => {
+    console.log("useEffect for [isPlaying] running, isPlaying:", isPlaying);
+    updateVis(year).catch(console.error);
+  }, [isPlaying, year, updateVis]);
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentPinLocation({
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error("Error getting user location:", error);
+        }
+      );
+    } else {
+      console.warn("Geolocation is not supported by this browser.");
+    }
+  }, []);
 
   return (
     <div ref={mountRef} style={{ width: "100%", height: "100vh" }}>
@@ -494,14 +660,18 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       {isSceneInitialized && sceneRef.current && (
         <PostLights scene={sceneRef.current} />
       )}
-      {isPlaying && (
-        <span
-          className="absolute top-4 left-4 text-white text-4xl font-semibold select-none"
-          style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.7)" }}
-        >
-          {year}
-        </span>
+
+      {visualizationGroupRef.current && currentPinLocation && (
+        <UserPin
+          group={visualizationGroupRef.current}
+          lat={currentPinLocation.lat}
+          lon={currentPinLocation.lon}
+        />
       )}
+
+      <span className="absolute bottom-4 right-4 text-white text-xl select-none">
+        {year}
+      </span>
     </div>
   );
 }
