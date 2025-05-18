@@ -136,6 +136,10 @@ export default function ThreeModel({
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const togglePlay = () => {
+    setIsPlaying(!isPlaying);
+  };
+
   const handlePost = () => {
     onPostButtonClick();
   };
@@ -186,15 +190,18 @@ export default function ThreeModel({
         !visualizationGroupRef.current ||
         !cameraRef.current ||
         !raycasterRef.current ||
-        !mouseRef.current
+        !mouseRef.current ||
+        !mountRef.current // mountRef.currentもチェック
       ) {
         console.log("onClickHandler: Crucial refs are null, ignoring click.");
         return;
       }
 
       const mouse = mouseRef.current;
-      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      // mountRef.current を基準にマウス座標を正規化
+      const rect = mountRef.current.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       const raycaster = raycasterRef.current;
       raycaster.setFromCamera(mouse, cameraRef.current);
@@ -514,22 +521,31 @@ export default function ThreeModel({
     directionalLight.position.set(5, 3, 5);
     scene.add(directionalLight);
 
+    // Initialize Raycaster and Mouse Vector for onClickHandler
+    raycasterRef.current = new THREE.Raycaster();
+    mouseRef.current = new THREE.Vector2();
+
     // Initial render & Start animation loop
     renderer.render(scene, camera); //最初のレンダリング
     setIsSceneInitialized(true); // シーン初期化完了をマーク
     console.log("Three.js scene initialized and initial render complete.");
 
     const loop = () => {
-      if (!rendererRef.current || !sceneRef.current) return;
+      if (!rendererRef.current || !sceneRef.current || !cameraRef.current)
+        return; // cameraRef.current もチェックに追加
       animationFrameIdRef.current = requestAnimationFrame(loop);
 
       if (earthRef.current) {
         earthRef.current.rotation.y += EARTH.ROT_SPEED;
       }
+      if (visualizationGroupRef.current) {
+        // visualizationGroupRefも地球と同じように回転させる
+        visualizationGroupRef.current.rotation.y += EARTH.ROT_SPEED;
+      }
       if (controlsRef.current) {
         controlsRef.current.update();
       }
-      rendererRef.current.render(sceneRef.current, camera);
+      rendererRef.current.render(sceneRef.current, cameraRef.current); // cameraRef.current を使用
     };
 
     loop();
@@ -546,6 +562,9 @@ export default function ThreeModel({
     };
     window.addEventListener("resize", internalOnResize);
 
+    // Capture the ref's current value for cleanup
+    const countryMeshesForCleanup = countryMeshesRef.current;
+
     // Cleanup
     return () => {
       console.log("Cleaning up ThreeModel (main useEffect)...");
@@ -554,12 +573,11 @@ export default function ThreeModel({
       }
       window.removeEventListener("resize", internalOnResize);
       removeClickedPin();
-      countryMeshesRef.current.forEach((meshes) => {
+      countryMeshesForCleanup.forEach((meshes) => {
         removeCylinder(meshes.birth);
         removeCylinder(meshes.death);
       });
-      countryMeshesRef.current.clear();
-      countryMeshesRef.current.clear();
+      countryMeshesForCleanup.clear();
 
       if (earthRef.current) {
         earthRef.current.geometry.dispose();
@@ -595,9 +613,10 @@ export default function ThreeModel({
       rendererRef.current = null;
       controlsRef.current = null;
       cameraRef.current = null;
-      raycasterRef.current = null;
-      mouseRef.current = null;
+      raycasterRef.current = null; // Clean up raycasterRef
+      mouseRef.current = null; // Clean up mouseRef
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
