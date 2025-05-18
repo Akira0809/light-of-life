@@ -173,7 +173,7 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
   /* ────────────────  DATA UPDATE  ──────────────── */
   const updateVis = useCallback(
     async (y: number) => {
-      console.log("updateVis called with year:", y);
+      console.log("updateVis called with year:", y, "isPlaying:", isPlaying);
       if (
         !visualizationGroupRef.current ||
         !countryMeshesRef.current ||
@@ -184,6 +184,21 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       }
 
       const currentMeshesMap = countryMeshesRef.current;
+
+      if (!isPlaying) {
+        console.log("isPlaying is false, clearing all visualizations.");
+        const currentIso3sToClear = Array.from(currentMeshesMap.keys());
+        for (const iso3 of currentIso3sToClear) {
+          const meshesToDelete = currentMeshesMap.get(iso3);
+          if (meshesToDelete) {
+            removeCylinder(meshesToDelete.birth);
+            removeCylinder(meshesToDelete.death);
+          }
+          currentMeshesMap.delete(iso3);
+        }
+        return;
+      }
+
       const vitalData = await fetchMatrices(y);
       const processedIso3s = new Set<string>();
 
@@ -281,7 +296,7 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
         }
       }
     },
-    [removeCylinder, createOrUpdateCylinder]
+    [removeCylinder, createOrUpdateCylinder, isPlaying]
   );
 
   /* ────────────────  PLAY/PAUSE  ──────────────── */
@@ -419,14 +434,25 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
     updateVis(year).catch(console.error);
   }, [year, updateVis]);
 
+  // isPlaying 状態が変わった時に updateVis を呼び出す
+  useEffect(() => {
+    console.log("useEffect for [isPlaying] running, isPlaying:", isPlaying);
+    updateVis(year).catch(console.error);
+  }, [isPlaying, year, updateVis]);
+
   return (
     <>
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
       <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
-      <span className="absolute bottom-4 right-4 text-white text-xl select-none">
-        {year}
-      </span>
+      {isPlaying && (
+        <span
+          className="absolute top-4 left-4 text-white text-4xl font-semibold select-none"
+          style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.7)" }}
+        >
+          {year}
+        </span>
+      )}
     </>
   );
 }
