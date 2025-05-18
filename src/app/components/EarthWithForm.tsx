@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import { useState, useRef } from 'react'
 import ThreeModel from './ThreeModel'
@@ -12,7 +12,6 @@ const EarthWithForm = () => {
     <>
       <ThreeModel
         onClickLocation={(lat, lon) => setLocation({ lat, lon })}
-        onLineReady={(clear) => (clearLineRef.current = clear)}
       />
       <div className="absolute z-50">
         {location && (
@@ -27,7 +26,7 @@ const EarthWithForm = () => {
         )}
       </div>
     </>
-  )
-}
+  );
+};
 
-export default EarthWithForm
+export default EarthWithForm;

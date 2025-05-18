@@ -10,6 +10,7 @@
     "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.49.4",
     "@types/three": "^0.176.0",
     "framer-motion": "^12.12.1",
