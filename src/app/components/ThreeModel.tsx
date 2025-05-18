@@ -9,6 +9,7 @@ import PostButton from "./PostButton";
 import { supabase } from "@/lib/supabase";
 import { latLonToVector3 } from "@/lib/geo";
 import UserPin from "./UserPin";
+import PostLights from "./PostLights";
 
 /* ────────────────  CONSTS  ──────────────── */
 
@@ -131,8 +132,13 @@ export default function ThreeModel({
     lat: number;
     lon: number;
   } | null>(null);
+  const [isSceneInitialized, setIsSceneInitialized] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const togglePlay = () => {
+    setIsPlaying(!isPlaying);
+  };
 
   const handlePost = () => {
     onPostButtonClick();
@@ -184,15 +190,18 @@ export default function ThreeModel({
         !visualizationGroupRef.current ||
         !cameraRef.current ||
         !raycasterRef.current ||
-        !mouseRef.current
+        !mouseRef.current ||
+        !mountRef.current // mountRef.currentもチェック
       ) {
         console.log("onClickHandler: Crucial refs are null, ignoring click.");
         return;
       }
 
       const mouse = mouseRef.current;
-      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      // mountRef.current を基準にマウス座標を正規化
+      const rect = mountRef.current.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       const raycaster = raycasterRef.current;
       raycaster.setFromCamera(mouse, cameraRef.current);
@@ -372,8 +381,7 @@ export default function ThreeModel({
             baseQuaternion
           );
         } else if (countryEntry.death) {
-          removeCylinder(countryEntry.death);
-          countryEntry.death = undefined;
+          countryEntry.death.visible = false;
         }
 
         // Birth cylinder
@@ -392,19 +400,17 @@ export default function ThreeModel({
             baseQuaternion
           );
         } else if (countryEntry.birth) {
-          removeCylinder(countryEntry.birth);
-          countryEntry.birth = undefined;
+          countryEntry.birth.visible = false;
         }
 
-        if (countryEntry.birth || countryEntry.death) {
+        if (data.deaths > 0 || data.births > 0) {
           currentMeshesMap.set(data.iso3, countryEntry);
-        } else {
-          currentMeshesMap.delete(data.iso3);
         }
       });
 
-      const currentIso3s = Array.from(currentMeshesMap.keys());
-      for (const iso3 of currentIso3s) {
+      // Remove visualizations for countries not in the current year's data
+      const allIso3s = Array.from(currentMeshesMap.keys());
+      for (const iso3 of allIso3s) {
         if (!processedIso3s.has(iso3)) {
           const meshesToDelete = currentMeshesMap.get(iso3);
           if (meshesToDelete) {
@@ -415,103 +421,151 @@ export default function ThreeModel({
         }
       }
     },
-    [removeCylinder, createOrUpdateCylinder, isPlaying]
+    [isPlaying, removeCylinder, createOrUpdateCylinder]
   );
 
-  /* ────────────────  PLAY/PAUSE  ──────────────── */
-  const togglePlay = () => {
-    setIsPlaying((p) => !p);
-  };
-
+  /* ────────────────  PLAYBACK & YEAR UPDATE  ──────────────── */
   useEffect(() => {
     if (isPlaying) {
       timerRef.current = setInterval(() => {
-        setYear((y) => (y >= 2024 ? 1950 : y + 1));
-      }, 1000);
+        setYear((prevYear) => {
+          const nextYear = prevYear + 1;
+          return nextYear > 2021 ? 1950 : nextYear; // Loop back
+        });
+      }, 500); // Adjust speed as needed
     } else {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     }
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     };
   }, [isPlaying]);
 
-  /* ────────────────  INITIAL THREE  ──────────────── */
   useEffect(() => {
-    console.log("Initial useEffect (mount) running");
-    if (!mountRef.current) {
-      console.log("mountRef.current is null in initial useEffect");
+    updateVis(year).catch(console.error);
+  }, [isPlaying, year, updateVis]);
+
+  /* ────────────────  SETUP  ──────────────── */
+  useEffect(() => {
+    console.log("ThreeModel setup useEffect triggered");
+    // Initialize renderer only once
+    if (!mountRef.current || rendererRef.current) {
+      console.log(
+        "Mount ref not available or renderer already exists, exiting setup."
+      );
       return;
     }
-    const el = mountRef.current;
 
+    console.log("Initializing Three.js scene...");
+
+    const currentMount = mountRef.current;
+
+    // Scene
     const scene = new THREE.Scene();
-    sceneRef.current = scene;
+    sceneRef.current = scene; // sceneRefに代入。isSceneInitializedのトリガーになる
 
+    // Camera
     const camera = new THREE.PerspectiveCamera(
       CAMERA_FOV,
-      el.clientWidth / el.clientHeight,
+      currentMount.clientWidth / currentMount.clientHeight,
       0.1,
       1000
     );
     camera.position.set(0, 0, CAMERA_POSITION_Z);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    rendererRef.current = renderer;
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(el.clientWidth, el.clientHeight);
-    THREE.ColorManagement.enabled = true;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    el.appendChild(renderer.domElement);
+    currentMount.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
+    // Controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.screenSpacePanning = false;
+    controls.minDistance = 1.5;
+    controls.maxDistance = 5;
+    controls.enablePan = false;
+    controls.enableZoom = true;
+    controlsRef.current = controls;
+
+    // Earth
+    const textureLoader = new THREE.TextureLoader();
+    const earthTexture = textureLoader.load(EARTH.TEX_PATH);
+    const earthMaterial = new THREE.MeshStandardMaterial({ map: earthTexture });
+    const earthGeometry = new THREE.SphereGeometry(
+      EARTH_RADIUS,
+      EARTH.SEGMENTS,
+      EARTH.SEGMENTS
+    );
+    const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+    scene.add(earth);
+    earthRef.current = earth;
+
+    // Visualization Group (for cylinders)
+    const visGroup = new THREE.Group();
+    scene.add(visGroup);
+    visualizationGroupRef.current = visGroup;
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft white light
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 3, 5);
+    scene.add(directionalLight);
+
+    // Initialize Raycaster and Mouse Vector for onClickHandler
     raycasterRef.current = new THREE.Raycaster();
     mouseRef.current = new THREE.Vector2();
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-    dirLight.position.set(5, 5, 5);
-    scene.add(dirLight);
-
-    const earthInstance = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_RADIUS, EARTH.SEGMENTS, EARTH.SEGMENTS),
-      new THREE.MeshStandardMaterial({
-        map: new THREE.TextureLoader().load(EARTH.TEX_PATH),
-      })
-    );
-    earthRef.current = earthInstance;
-    earthInstance.rotation.y = -Math.PI / 2;
-    scene.add(earthInstance);
-
-    const vizGroup = new THREE.Group();
-    visualizationGroupRef.current = vizGroup;
-    earthInstance.add(vizGroup);
-
-    const orbitControls = new OrbitControls(camera, renderer.domElement);
-    controlsRef.current = orbitControls;
-    orbitControls.enableDamping = true;
-    orbitControls.minDistance = 1.1;
-    orbitControls.maxDistance = 10;
+    // Initial render & Start animation loop
+    renderer.render(scene, camera); //最初のレンダリング
+    setIsSceneInitialized(true); // シーン初期化完了をマーク
+    console.log("Three.js scene initialized and initial render complete.");
 
     const loop = () => {
+      if (!rendererRef.current || !sceneRef.current || !cameraRef.current)
+        return; // cameraRef.current もチェックに追加
       animationFrameIdRef.current = requestAnimationFrame(loop);
-      if (earthRef.current) earthRef.current.rotation.y += EARTH.ROT_SPEED;
-      if (controlsRef.current) controlsRef.current.update();
-      if (rendererRef.current && sceneRef.current && cameraRef.current) {
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
+
+      if (earthRef.current) {
+        earthRef.current.rotation.y += EARTH.ROT_SPEED;
       }
+      if (visualizationGroupRef.current) {
+        // visualizationGroupRefも地球と同じように回転させる
+        visualizationGroupRef.current.rotation.y += EARTH.ROT_SPEED;
+      }
+      if (controlsRef.current) {
+        controlsRef.current.update();
+      }
+      rendererRef.current.render(sceneRef.current, cameraRef.current); // cameraRef.current を使用
     };
+
     loop();
 
+    // Resize listener
     const internalOnResize = () => {
-      if (!el || !cameraRef.current || !rendererRef.current) return;
-      cameraRef.current.aspect = el.clientWidth / el.clientHeight;
-      cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(el.clientWidth, el.clientHeight);
+      if (!currentMount || !rendererRef.current) return;
+      camera.aspect = currentMount.clientWidth / currentMount.clientHeight;
+      camera.updateProjectionMatrix();
+      rendererRef.current.setSize(
+        currentMount.clientWidth,
+        currentMount.clientHeight
+      );
     };
     window.addEventListener("resize", internalOnResize);
 
+    // Capture the ref's current value for cleanup
+    const countryMeshesForCleanup = countryMeshesRef.current;
+
+    // Cleanup
     return () => {
       console.log("Cleaning up ThreeModel (main useEffect)...");
       if (animationFrameIdRef.current) {
@@ -519,34 +573,50 @@ export default function ThreeModel({
       }
       window.removeEventListener("resize", internalOnResize);
       removeClickedPin();
-      countryMeshesRef.current.forEach((meshes) => {
+      countryMeshesForCleanup.forEach((meshes) => {
         removeCylinder(meshes.birth);
         removeCylinder(meshes.death);
       });
-      countryMeshesRef.current.clear();
+      countryMeshesForCleanup.clear();
 
       if (earthRef.current) {
         earthRef.current.geometry.dispose();
         if (earthRef.current.material instanceof THREE.Material) {
           earthRef.current.material.dispose();
         }
+        scene.remove(earthRef.current); // 明示的にシーンから削除
       }
+      if (visualizationGroupRef.current) {
+        scene.remove(visualizationGroupRef.current); // 明示的にシーンから削除
+      }
+      // 他のライトなども必要に応じて削除・dispose
+      scene.remove(ambientLight);
+      scene.remove(directionalLight);
+      ambientLight.dispose();
+      directionalLight.dispose();
       if (controlsRef.current) controlsRef.current.dispose();
       if (rendererRef.current) {
-        if (el && rendererRef.current.domElement.parentNode === el) {
-          el.removeChild(rendererRef.current.domElement);
+        // DOM要素の削除はmountRef.currentのライフサイクルに任せるか、
+        // ここで明示的に削除するならcurrentMountのチェックが必要
+        if (
+          currentMount &&
+          rendererRef.current.domElement.parentNode === currentMount
+        ) {
+          currentMount.removeChild(rendererRef.current.domElement);
         }
         rendererRef.current.dispose();
       }
+
       sceneRef.current = null;
       earthRef.current = null;
       visualizationGroupRef.current = null;
       rendererRef.current = null;
       controlsRef.current = null;
       cameraRef.current = null;
-      raycasterRef.current = null;
-      mouseRef.current = null;
+      raycasterRef.current = null; // Clean up raycasterRef
+      mouseRef.current = null; // Clean up mouseRef
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -601,11 +671,53 @@ export default function ThreeModel({
     }
   }, []);
 
+  useEffect(() => {
+    if (!visualizationGroupRef.current || !sceneRef.current) {
+      console.warn("Visualization group or scene not initialized.");
+      return;
+    }
+
+    const subscription = supabase
+      .channel("realtime:posts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts" },
+        (payload) => {
+          console.log("New post received:", payload.new);
+
+          const { lat, lon, status } = payload.new; // status: "生まれた" or "死んだ"
+          const position = latLonToVector3(lat, lon, EARTH_RADIUS);
+          const color =
+            status === "生まれた" ? VIS.BIRTH_COLOR : VIS.DEATH_COLOR;
+
+          const light = new THREE.PointLight(color, 1, 0.5);
+          light.position.copy(position);
+          if (visualizationGroupRef.current) {
+            visualizationGroupRef.current.add(light);
+          }
+
+          // Fade out and remove the light after a short duration
+          setTimeout(() => {
+            visualizationGroupRef.current?.remove(light);
+          }, 3000); // Adjust duration as needed
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log("Cleaning up Supabase subscription.");
+      supabase.removeChannel(subscription);
+    };
+  }, []);
+
   return (
-    <>
+    <div ref={mountRef} style={{ width: "100%", height: "100vh" }}>
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
       <PostButton onClick={handlePost} />
-      <div ref={mountRef} className="fixed inset-0 z-0" />
+      {/* sceneが初期化されたらPostLightsを描画し、sceneRef.currentを渡す */}
+      {isSceneInitialized && sceneRef.current && (
+        <PostLights scene={sceneRef.current} />
+      )}
 
       {visualizationGroupRef.current && currentPinLocation && (
         <UserPin
@@ -618,6 +730,6 @@ export default function ThreeModel({
       <span className="absolute bottom-4 right-4 text-white text-xl select-none">
         {year}
       </span>
-    </>
+    </div>
   );
 }
