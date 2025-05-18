@@ -1,33 +1,61 @@
 // components/UserPin.tsx
 import * as THREE from "three";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { latLonToVector3 } from "@/lib/geo";
 
 type Props = {
   group: THREE.Group | null;
   lat: number;
   lon: number;
-  radius?: number;
+  radius?: number; // 地球の半径
+  pinHeight?: number; // ピンの高さ (円錐の高さ)
+  pinRadius?: number; // ピンの底面半径 (円錐の底面半径)
+  pinColor?: number; // ピンの色
 };
 
-export default function UserPin({ group, lat, lon, radius = 1 }: Props) {
+const DEFAULT_PIN_HEIGHT = 0.05;
+const DEFAULT_PIN_RADIUS = 0.01;
+const DEFAULT_PIN_COLOR = 0x00e0ff; // 明るい水色
+const RADIAL_SEGMENTS = 16; // 円錐の滑らかさ
+
+export default function UserPin({
+  group,
+  lat,
+  lon,
+  radius = 1,
+  pinHeight = DEFAULT_PIN_HEIGHT,
+  pinRadius = DEFAULT_PIN_RADIUS,
+  pinColor = DEFAULT_PIN_COLOR,
+}: Props) {
+  const pinGeometry = useMemo(() => {
+    return new THREE.ConeGeometry(pinRadius, pinHeight, RADIAL_SEGMENTS);
+  }, [pinRadius, pinHeight]);
+
   useEffect(() => {
-    if (!group) return;
+    if (!group || !pinGeometry) return;
 
-    const position = latLonToVector3(lat, lon, radius);
-    const geometry = new THREE.SphereGeometry(0.015, 16, 16);
-    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 }); // 黄色
-    const pin = new THREE.Mesh(geometry, material);
-    pin.position.copy(position);
+    const material = new THREE.MeshBasicMaterial({ color: pinColor });
+    const pinMesh = new THREE.Mesh(pinGeometry, material);
 
-    group.add(pin);
+    const surfacePosition = latLonToVector3(lat, lon, radius);
+    const normal = surfacePosition.clone().normalize(); // normalをuseEffectスコープ内で定義
+
+    pinMesh.position
+      .copy(surfacePosition)
+      .addScaledVector(normal, pinHeight / 2);
+    pinMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+
+    group.add(pinMesh);
 
     return () => {
-      group.remove(pin);
-      geometry.dispose();
+      if (group) {
+        group.remove(pinMesh);
+      }
       material.dispose();
     };
-  }, [group, lat, lon, radius]);
+    // pinHeightはpinGeometryの依存配列に含まれているので、ここからは削除可能。
+    // normalはuseEffect内で再計算されるので依存配列には不要。
+  }, [group, lat, lon, radius, pinColor, pinGeometry]);
 
   return null;
 }

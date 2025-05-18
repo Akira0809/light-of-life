@@ -100,13 +100,13 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  // Raycaster & pointer for click detection
-  const raycaster = useRef(new THREE.Raycaster());
-  const pointer = useRef(new THREE.Vector2());
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [year, setYear] = useState(1950);
+  const [currentPinLocation, setCurrentPinLocation] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -445,14 +445,43 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
     updateVis(year).catch(console.error);
   }, [isPlaying, year, updateVis]);
 
+  // Get user's current location to set a pin
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentPinLocation({
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error("Error getting user location:", error);
+          // Optionally set a default location if geolocation fails or is denied
+          // setCurrentPinLocation({ lat: 35.6895, lon: 139.6917 }); // Tokyo as default
+        }
+      );
+    } else {
+      console.warn("Geolocation is not supported by this browser.");
+      // Optionally set a default location
+      // setCurrentPinLocation({ lat: 35.6895, lon: 139.6917 }); // Tokyo as default
+    }
+  }, []); // Empty dependency array to run once on mount
+
   return (
     <>
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
       <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
 
-      {/* ユーザーピン（例：日本・東京） */}
-      <UserPin group={visualizationGroupRef.current} lat={35.6895} lon={139.6917} />
+      {/* ユーザーピン */}
+      {visualizationGroupRef.current && currentPinLocation && (
+        <UserPin
+          group={visualizationGroupRef.current}
+          lat={currentPinLocation.lat}
+          lon={currentPinLocation.lon}
+        />
+      )}
 
       {isPlaying && (
         <span
