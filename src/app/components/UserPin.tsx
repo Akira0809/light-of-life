@@ -53,9 +53,7 @@ export default function UserPin({
       }
       material.dispose();
     };
-    // pinHeightはpinGeometryの依存配列に含まれているので、ここからは削除可能。
-    // normalはuseEffect内で再計算されるので依存配列には不要。
-  }, [group, lat, lon, radius, pinColor, pinGeometry]);
+  }, [group, lat, lon, radius, pinColor, pinGeometry, pinHeight]);
 
   return null;
 }
