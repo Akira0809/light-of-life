@@ -33,6 +33,19 @@ const PostForm = ({ lat, lon, onClose }: Props) => {
     e.preventDefault();
     setError("");
 
+    if (
+      lat === undefined ||
+      lon === undefined ||
+      lat === null ||
+      lon === null ||
+      (lat === 0 && lon === 0)
+    ) {
+      setError(
+        "位置情報が取得できませんでした。マップをクリックして位置を指定してください。"
+      );
+      return;
+    }
+
     if (!form.status) {
       setError("「生まれた」または「亡くなった」を選択してください。");
       return;
@@ -65,7 +78,6 @@ const PostForm = ({ lat, lon, onClose }: Props) => {
       console.error("Supabase insert error:", insertError);
       setError(`投稿失敗: ${insertError.message}`);
     } else {
-      alert("投稿完了");
       onClose();
     }
   };
