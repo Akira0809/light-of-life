@@ -15,7 +15,7 @@ type Props = {
 
 const DEFAULT_PIN_HEIGHT = 0.05;
 const DEFAULT_PIN_RADIUS = 0.01;
-const DEFAULT_PIN_COLOR = 0x00e0ff; // 明るい水色
+const DEFAULT_PIN_COLOR = 0x32cd32; // ライムグリーン
 const RADIAL_SEGMENTS = 16; // 円錐の滑らかさ
 
 export default function UserPin({
