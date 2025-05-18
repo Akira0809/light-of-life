@@ -692,13 +692,13 @@ export default function ThreeModel({
 
           const light = new THREE.PointLight(color, 1, 0.5);
           light.position.copy(position);
-          if (sceneRef.current) {
-            sceneRef.current.add(light);
+          if (visualizationGroupRef.current) {
+            visualizationGroupRef.current.add(light);
           }
 
           // Fade out and remove the light after a short duration
           setTimeout(() => {
-            sceneRef.current?.remove(light);
+            visualizationGroupRef.current?.remove(light);
           }, 3000); // Adjust duration as needed
         }
       )
