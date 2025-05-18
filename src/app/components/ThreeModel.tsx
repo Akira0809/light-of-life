@@ -8,6 +8,7 @@ import PlayButton from "./PlayButton";
 import PostButton from "./PostButton";
 import { supabase } from "@/lib/supabase";
 import { latLonToVector3 } from "@/lib/geo";
+import UserPin from "./UserPin";
 
 /* ────────────────  CONSTS  ──────────────── */
 const EARTH_RADIUS = 1;
@@ -99,6 +100,10 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  // Raycaster & pointer for click detection
+  const raycaster = useRef(new THREE.Raycaster());
+  const pointer = useRef(new THREE.Vector2());
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [year, setYear] = useState(1950);
@@ -445,6 +450,10 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
       <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
+
+      {/* ユーザーピン（例：日本・東京） */}
+      <UserPin group={visualizationGroupRef.current} lat={35.6895} lon={139.6917} />
+
       {isPlaying && (
         <span
           className="absolute top-4 left-4 text-white text-4xl font-semibold select-none"
