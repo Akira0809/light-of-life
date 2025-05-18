@@ -10,6 +10,8 @@ import { supabase } from "@/lib/supabase";
 import { latLonToVector3 } from "@/lib/geo";
 
 /* ────────────────  CONSTS  ──────────────── */
+
+
 const EARTH_RADIUS = 1;
 const CAMERA_FOV = 60;
 const CAMERA_POSITION_Z = 2.5;
@@ -29,6 +31,11 @@ const VIS = {
 };
 
 /* ────────────────  TYPES  ──────────────── */
+type Props = {
+  onPostButtonClick: () => void;
+  onClickLocation: (lat: number, lon: number) => void;
+}
+
 type VitalStatsFromSupabase = {
   iso3: string;
   births: number;
@@ -49,7 +56,6 @@ type CountryMeshes = {
   death?: THREE.Mesh;
 };
 
-type Props = { onPostButtonClick: () => void };
 
 /* ────────────────  HELPERS  ──────────────── */
 
@@ -69,6 +75,8 @@ async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
   if (error) throw error;
   if (!data?.length) return [];
 
+  console.log("Data fetched from Supabase:", data);
+
   const processedData = data
     .filter(
       (
@@ -84,12 +92,13 @@ async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
       lat: r.countries.lat,
       lon: r.countries.lon,
     }));
+  console.log("Processed data:", processedData);
   return processedData;
 }
 
 /* ─────────────────────────────────────────── */
 
-export default function ThreeModel({ onPostButtonClick }: Props) {
+export default function ThreeModel({ onPostButtonClick, onClickLocation, }: Props) {
   console.log("ThreeModel component rendering");
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -107,6 +116,19 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
 
   const handlePost = () => {
     onPostButtonClick();
+  };
+ const toLatLon = (point: THREE.Vector3) => {
+    const earth = earthRef.current;
+    if (!earth) return { lat: 0, lon: 0 };
+
+    const p = point.clone();
+    earth.worldToLocal(p);
+    const r = p.length();
+    const lat = THREE.MathUtils.radToDeg(Math.asin(p.y / r));
+    let lon = -THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x));
+    if (lon > 180) lon -= 360;
+    if (lon < -180) lon += 360;
+    return { lat, lon };
   };
 
   const removeCylinder = useCallback((mesh: THREE.Mesh | undefined) => {
@@ -169,11 +191,10 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
     },
     []
   );
-
   /* ────────────────  DATA UPDATE  ──────────────── */
   const updateVis = useCallback(
     async (y: number) => {
-      console.log("updateVis called with year:", y, "isPlaying:", isPlaying);
+      console.log("updateVis called with year:", y);
       if (
         !visualizationGroupRef.current ||
         !countryMeshesRef.current ||
@@ -184,21 +205,6 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
       }
 
       const currentMeshesMap = countryMeshesRef.current;
-
-      if (!isPlaying) {
-        console.log("isPlaying is false, clearing all visualizations.");
-        const currentIso3sToClear = Array.from(currentMeshesMap.keys());
-        for (const iso3 of currentIso3sToClear) {
-          const meshesToDelete = currentMeshesMap.get(iso3);
-          if (meshesToDelete) {
-            removeCylinder(meshesToDelete.birth);
-            removeCylinder(meshesToDelete.death);
-          }
-          currentMeshesMap.delete(iso3);
-        }
-        return;
-      }
-
       const vitalData = await fetchMatrices(y);
       const processedIso3s = new Set<string>();
 
@@ -296,7 +302,7 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
         }
       }
     },
-    [removeCylinder, createOrUpdateCylinder, isPlaying]
+    [removeCylinder, createOrUpdateCylinder]
   );
 
   /* ────────────────  PLAY/PAUSE  ──────────────── */
@@ -373,6 +379,23 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
     orbitControls.minDistance = 1.1;
     orbitControls.maxDistance = 10;
 
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+     const onClickHandler = (e: MouseEvent) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    const hit = raycaster.intersectObject(earthRef.current!)[0];
+    if (!hit) return;
+
+    const { lat, lon } = toLatLon(hit.point);
+    console.log('ThreeModel click', lat, lon);
+    onClickLocation(lat, lon);
+  };
+  window.addEventListener('click', onClickHandler);
+
     const loop = () => {
       animationFrameIdRef.current = requestAnimationFrame(loop);
       if (earthRef.current) earthRef.current.rotation.y += EARTH.ROT_SPEED;
@@ -434,25 +457,14 @@ export default function ThreeModel({ onPostButtonClick }: Props) {
     updateVis(year).catch(console.error);
   }, [year, updateVis]);
 
-  // isPlaying 状態が変わった時に updateVis を呼び出す
-  useEffect(() => {
-    console.log("useEffect for [isPlaying] running, isPlaying:", isPlaying);
-    updateVis(year).catch(console.error);
-  }, [isPlaying, year, updateVis]);
-
   return (
     <>
       <PlayButton onClick={togglePlay} isPlaying={isPlaying} />
       <PostButton onClick={handlePost} />
       <div ref={mountRef} className="fixed inset-0 z-0" />
-      {isPlaying && (
-        <span
-          className="absolute top-4 left-4 text-white text-4xl font-semibold select-none"
-          style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.7)" }}
-        >
-          {year}
-        </span>
-      )}
+      <span className="absolute bottom-4 right-4 text-white text-xl select-none">
+        {year}
+      </span>
     </>
   );
 }
