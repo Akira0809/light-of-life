@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { latLonToVector3 } from "@/lib/geo";
 import UserPin from "./UserPin";
 import PostLights from "./PostLights";
+import { fetchVitalStatsByYearOperation } from "@/infrastructures/vitalStatsOparations";
 
 /* ────────────────  CONSTS  ──────────────── */
 
@@ -45,66 +46,10 @@ type Props = {
   isFormVisible: boolean;
 };
 
-type VitalStatsFromSupabase = {
-  iso3: string;
-  births: number;
-  deaths: number;
-  countries: { lat: number; lon: number } | null;
-};
-
-type VitalStatsProcessed = {
-  iso3: string;
-  births: number;
-  deaths: number;
-  lat: number;
-  lon: number;
-};
-
 type CountryMeshes = {
   birth?: THREE.Mesh;
   death?: THREE.Mesh;
 };
-
-/* ────────────────  HELPERS  ──────────────── */
-
-async function fetchMatrices(year: number): Promise<VitalStatsProcessed[]> {
-  console.log("fetchMatrices called with year:", year);
-  const { data, error } = await supabase
-    .from("vital_stats")
-    .select(
-      `
-      iso3, births, deaths,
-      countries:iso3(lat,lon)
-    `
-    )
-    .eq("year", year)
-    .returns<VitalStatsFromSupabase[]>();
-
-  if (error) throw error;
-  if (!data?.length) return [];
-
-  console.log("Data fetched from Supabase:", data);
-
-  const processedData = data
-    .filter(
-      (
-        r
-      ): r is VitalStatsFromSupabase & {
-        countries: { lat: number; lon: number };
-      } => r.countries !== null
-    )
-    .map((r) => ({
-      iso3: r.iso3,
-      births: r.births,
-      deaths: r.deaths,
-      lat: r.countries.lat,
-      lon: r.countries.lon,
-    }));
-  console.log("Processed data:", processedData);
-  return processedData;
-}
-
-/* ─────────────────────────────────────────── */
 
 export default function ThreeModel({
   onPostButtonClick,
@@ -321,7 +266,7 @@ export default function ThreeModel({
         return;
       }
 
-      const vitalData = await fetchMatrices(y);
+      const vitalData = await fetchVitalStatsByYearOperation(y);
       const processedIso3s = new Set<string>();
 
       if (vitalData.length === 0 && currentMeshesMap.size === 0) {
